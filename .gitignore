@@ -1,0 +1,64 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# Assignment pack — keep locally, do not commit
+FDE_Assignment_Pack_Kestrel_v1.1/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / pnpm
+node_modules/
+.pnp
+.pnp.*
+.pnpm-store/
+.next/
+.turbo/
+out/
+dist/
+coverage/
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
+
+# Editors
+.idea/
+*.swp
+*.swo
+
+# Local scratch
+.cache/
+tmp/
+temp/
+
+# Personal agent overrides
+CLAUDE.local.md
+*.local.md
+
+# Extra guard if someone copies the pack db into the tree
+*.db
