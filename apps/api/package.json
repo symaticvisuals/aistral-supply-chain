@@ -6,6 +6,6 @@
     "dev": "uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
     "lint": "uv run ruff check .",
     "format": "uv run ruff format .",
-    "typecheck": "uv run ruff check ."
+    "typecheck": "uv run ty check"
   }
 }

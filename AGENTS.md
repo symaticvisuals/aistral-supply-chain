@@ -17,7 +17,7 @@ pnpm dev          # web :3000 + api :8000
 pnpm lint
 pnpm typecheck
 pnpm --filter web build
-cd apps/api && uv sync && uv run ruff check .
+cd apps/api && uv sync && uv run ruff check . && uv run ty check
 ```
 
 Add UI: `pnpm dlx shadcn@latest add <name> -c apps/web` (lands in `packages/ui`).
