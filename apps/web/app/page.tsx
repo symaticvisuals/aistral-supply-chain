@@ -2,10 +2,12 @@ import Link from "next/link"
 
 import {
   getFill,
+  getMoney,
   getMorning,
   getOutlets,
   type ApiResult,
   type EventItem,
+  type Money,
   type MorningEvent,
   type OutletRow,
 } from "@/lib/api"
@@ -79,7 +81,7 @@ function Unreachable({
   return (
     <div className="border border-breach bg-card p-5">
       <p className="eyebrow text-breach">
-        {failures.length} of 3 API calls failed
+        {failures.length} of 4 API calls failed
       </p>
       <ul className="mt-1.5 space-y-1">
         {failures.map((f) => (
@@ -102,8 +104,26 @@ function Unreachable({
 const ITEM_FIELDS = [
   "warehouse", "late", "drops", "late_pct", "worst_route", "worst_minutes",
   "ref", "outlet", "max_temp_c", "units", "channel", "product", "shops",
-  "units_short", "band",
+  "units_short", "band", "days_waiting", "value_inr",
 ] as const
+
+/** Rupees, whole. The paisa on a credit note never changes a decision. */
+const inr = (n: number | null | undefined) =>
+  n === null || n === undefined
+    ? "—"
+    : `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
+
+/** Agreed is a loss, undecided is exposure, refused is neither. Three tones. */
+function creditTiles(c: Money["credit_notes"]) {
+  return [
+    { label: "Agreed", value: c.settled_inr, notes: c.settled_n,
+      tone: "text-breach" },
+    { label: "Undecided", value: c.undecided_inr, notes: c.undecided_n,
+      tone: "text-watch" },
+    { label: "Refused", value: c.refused_inr, notes: c.refused_n,
+      tone: "text-muted-foreground" },
+  ]
+}
 
 function EventCard({ event }: { event: MorningEvent }) {
   return (
@@ -180,15 +200,18 @@ export default async function Page({
   searchParams: Promise<{ region?: string; as_of?: string }>
 }) {
   const { region, as_of: asOf } = await searchParams
-  const [morning, fill, outlets] = await Promise.all([
+  const calls = [
     getMorning(region, asOf),
     getFill(region),
     getOutlets(region, 5),
-  ])
+    getMoney(region),
+  ] as const
+  const [morning, fill, outlets, money] = await Promise.all(calls)
 
   const day = morning.ok ? morning.data : null
   const q = fill.ok ? fill.data : null
-  const failures = [morning, fill, outlets]
+  const m = money.ok ? money.data : null
+  const failures = [morning, fill, outlets, money]
     .filter((r): r is Extract<ApiResult<never>, { ok: false }> => !r.ok)
     .map(({ error, url }) => ({ error, url }))
 
@@ -311,6 +334,19 @@ export default async function Page({
                     : "No data."}
                 </p>
               )}
+
+              {/* Kept below a rule and labelled: a pile that reads the same
+                  every morning must not be mistaken for fresh damage. */}
+              {day && day.standing.length ? (
+                <div className="mt-4 border-t border-foreground/25 pt-3">
+                  <p className="eyebrow">Already true this morning</p>
+                  <ul className="mt-2 space-y-3">
+                    {day.standing.map((e) => (
+                      <EventCard key={e.kind} event={e} />
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </Panel>
           </div>
 
@@ -347,6 +383,93 @@ export default async function Page({
           >
             {outlets.ok ? (
               <OutletTable rows={outlets.data.by_units_short} metric="short" />
+            ) : (
+              <p className="text-sm text-muted-foreground">No data.</p>
+            )}
+          </Panel>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <Panel
+              title="Credit notes against dispatch"
+              meta={m ? m.window.label : undefined}
+            >
+              {m ? (
+                <>
+                  <div className="grid gap-px border border-border bg-border sm:grid-cols-3">
+                    {creditTiles(m.credit_notes).map((t) => (
+                      <div key={t.label} className="bg-panel p-3">
+                        <p className="eyebrow">{t.label}</p>
+                        <p className={`figure mt-1 text-2xl ${t.tone}`}>
+                          {inr(t.value)}
+                        </p>
+                        <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                          {num(t.notes)} notes
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-sm">
+                    A rejected note is not a loss and an undecided one is not a
+                    decision, so none of the three is blended away.
+                  </p>
+                  <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+                    {inr(m.dispatch_inr)} dispatched — priced on what was
+                    delivered, not what was ordered.
+                    <br />
+                    Raised is {num(m.raised_pct, 2)}% of that
+                    {m.ratio_is_material
+                      ? "."
+                      : ", too small to watch as a rate. The rupees are the number."}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No data.</p>
+              )}
+            </Panel>
+          </div>
+
+          <Panel
+            title="By category"
+            meta={m ? `${m.by_category.length} categories` : undefined}
+          >
+            {m && m.by_category.length ? (
+              <>
+                <table className="w-full border-collapse font-mono text-[11px] tabular-nums">
+                  <thead>
+                    <tr className="border-b border-foreground">
+                      <th className="pb-1 text-left font-medium text-muted-foreground">
+                        Category
+                      </th>
+                      <th className="pb-1 text-right font-medium text-muted-foreground">
+                        Agreed
+                      </th>
+                      <th className="pb-1 text-right font-medium text-muted-foreground">
+                        Undecided
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {m.by_category.map((c) => (
+                      <tr key={c.category} className="border-b border-border/50">
+                        <td className="py-1.5">{c.category}</td>
+                        <td className="py-1.5 text-right text-breach">
+                          {inr(c.settled_inr)}
+                        </td>
+                        <td className="py-1.5 text-right text-watch">
+                          {inr(c.undecided_inr)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-2.5 text-xs text-muted-foreground">
+                  Shown in rupees, not as a share of each category&rsquo;s own
+                  dispatch. They sit inside a narrow band, and a percentage would
+                  dress that flatness up as a ranking.
+                </p>
+              </>
             ) : (
               <p className="text-sm text-muted-foreground">No data.</p>
             )}

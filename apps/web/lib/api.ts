@@ -58,6 +58,8 @@ export type Morning = {
     late_over_2h_by_timestamps: number
   }
   events: MorningEvent[]
+  /** Already true before the day started. Never merged into events. */
+  standing: MorningEvent[]
   notes: string[]
 }
 
@@ -90,6 +92,37 @@ export type Outlets = {
   exposure: { by_units_short: number; by_fill_pct: number }
 }
 
+export type Money = {
+  window: { id: string; label: string }
+  dispatch_inr: number
+  credit_notes: {
+    settled_inr: number
+    undecided_inr: number
+    refused_inr: number
+    exposed_inr: number
+    raised_inr: number
+    settled_n: number
+    undecided_n: number
+    refused_n: number
+  }
+  raised_pct: number | null
+  /** False when the ratio is too small to carry a decision. Read the rupees. */
+  ratio_is_material: boolean
+  by_category: {
+    category: string
+    settled_inr: number
+    undecided_inr: number
+    notes_n: number
+  }[]
+  pending_queue: {
+    notes_n: number
+    value_inr: number
+    oldest_date: string | null
+    oldest_days: number | null
+  }
+  notes: string[]
+}
+
 const qs = (params: Record<string, string | undefined>) => {
   const q = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) if (v) q.set(k, v)
@@ -107,3 +140,6 @@ export const getOutlets = (region?: string, limit = 5) =>
   get<Outlets>(
     `/metrics/fill/outlets${qs({ region, scope: "attempted", limit: String(limit) })}`
   )
+
+export const getMoney = (region?: string) =>
+  get<Money>(`/metrics/money${qs({ region })}`)
