@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app import handled
 from app.db import get_conn
+from app.metrics import expiry as expiry_q
 from app.metrics import fill as fill_q
 from app.metrics import money as money_q
 from app.metrics import morning as morning_q
@@ -13,6 +14,7 @@ from app.metrics.compute import decompose, fill_numbers, units_short
 from app.metrics.scope import Scope, ScopeError, build_receipt, get_scope
 from app.metrics.windows import Window, WindowError, parse_window
 from app.schemas import (
+    ExpiryResponse,
     FillResponse,
     HandleIn,
     HandleOut,
@@ -263,6 +265,56 @@ def get_money(
             "stale_n": pending.stale_n,
             "stale_inr": pending.stale_inr,
         },
+        notes=notes,
+    )
+
+
+@router.get("/expiry", response_model=ExpiryResponse)
+def get_expiry(
+    as_of: str | None = Query(None, description="YYYY-MM-DD; omit for the "
+                                                "last day with data"),
+    region: str | None = Query(None),
+    limit: int = Query(10, ge=1, le=500),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> ExpiryResponse:
+    """Stock that will not sell before it expires.
+
+    The only forward-looking thing here. Everything else in this service reports
+    what already went wrong; this says what is about to, while a transfer or a
+    promotion can still change it.
+    """
+    try:
+        day = morning_q.resolve_as_of(conn, as_of or settings.as_of_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    region_id = _region_id(conn, region)
+    risk = expiry_q.at_risk(conn, day, region_id, limit)
+
+    notes = [
+        "Value is on-hand cases at list price, which is per each in this data.",
+        "'Cannot sell through' means days_of_cover exceeds the days left before "
+        "expiry. days_of_cover tops out at 40 here, so the test cannot flag a "
+        "slow mover with three months left — that bound is real, not a choice.",
+        "ageing_bucket is ignored: rows labelled '0-30' and '90+' have the same "
+        "average shelf life left. See AGEING_BUCKET_NO_SIGNAL in /metrics/quality.",
+    ]
+    if risk.is_stale:
+        notes.append(
+            f"The stock position is {risk.snapshot_age_days} days old. Snapshots "
+            f"land weekly, so treat these as leads rather than counts."
+        )
+
+    return ExpiryResponse(
+        as_of=day.isoformat(), region=region,
+        snapshot_date=(
+            risk.snapshot_date.isoformat() if risk.snapshot_date else None),
+        snapshot_age_days=risk.snapshot_age_days,
+        is_stale=risk.is_stale,
+        near_lines=risk.near_lines, near_cases=risk.near_cases,
+        near_value_inr=risk.near_value_inr,
+        doomed_lines=risk.doomed_lines, doomed_cases=risk.doomed_cases,
+        doomed_value_inr=risk.doomed_value_inr,
+        lines=[line.__dict__ for line in risk.lines],
         notes=notes,
     )
 

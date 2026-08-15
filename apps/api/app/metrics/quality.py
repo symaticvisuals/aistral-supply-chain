@@ -221,6 +221,34 @@ def temperature_flag_signal(conn) -> Finding:
     )
 
 
+def ageing_bucket_signal(conn) -> Finding:
+    """Does the ageing label match the expiry date on the same row?"""
+    rows = conn.execute("""
+        SELECT ageing_bucket AS bucket, COUNT(*) AS n,
+               ROUND(AVG(julianday(expiry_date) - julianday(snapshot_date))) AS avg_days
+          FROM inventory_snapshots
+         GROUP BY ageing_bucket ORDER BY ageing_bucket""").fetchall()
+    days = [r["avg_days"] for r in rows if r["avg_days"] is not None]
+    spread = (max(days) - min(days)) if len(days) > 1 else None
+    # Buckets that claim to be 0-30 and 90+ must differ by more than a few days.
+    noise = spread is not None and spread < 10
+
+    return Finding(
+        id="AGEING_BUCKET_NO_SIGNAL",
+        severity="advisory" if noise else "clean",
+        statement=(
+            "ageing_bucket does not describe the row it sits on: stock labelled "
+            "'0-30' has the same average shelf life left as stock labelled '90+'. "
+            "Expiry is computed from expiry_date against the snapshot date instead."
+            if noise else
+            "ageing_bucket tracks the days remaining on the row."
+        ),
+        evidence={"by_bucket": [dict(r) for r in rows],
+                  "avg_days_spread": spread},
+        affects=["expiry", "inventory"],
+    )
+
+
 def credit_approval_trail(conn) -> Finding:
     rows = conn.execute("""
         SELECT status, COUNT(*) AS n,
@@ -565,7 +593,7 @@ def all_findings(conn: sqlite3.Connection, window: Window) -> list[Finding]:
         header_ties_to_lines(conn), net_value_by_source(conn), city_spellings(conn),
         route_region_mismatch(conn), outlet_fill_is_noisy(conn, window),
         return_reason_signal(conn), credit_approval_trail(conn),
-        temperature_flag_signal(conn),
+        temperature_flag_signal(conn), ageing_bucket_signal(conn),
         line_value_is_ordered(conn), credit_leakage_immaterial(conn, window),
     ]
     rank = {"blocks_metric": 0, "advisory": 1, "clean": 2}

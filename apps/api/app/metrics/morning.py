@@ -14,7 +14,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Literal
 
-from app.metrics import money
+from app.metrics import expiry, money
 from app.metrics.scope import outlet_filter
 from app.metrics.windows import Window
 
@@ -437,6 +437,48 @@ def credit_backlog(conn, day, region_id) -> Event | None:
     )
 
 
+def expiring_stock(conn, day, region_id) -> Event | None:
+    """Stock on the rack that will not move before it expires.
+
+    Standing, not a day event: it comes from a weekly snapshot and it was true
+    before this morning started. It is also the only forward-looking thing on
+    the screen — everything else here already happened.
+
+    Region means the *warehouse's* region here, because this is physical stock
+    in a DC. Everywhere else region means the shop's.
+    """
+    risk = expiry.at_risk(conn, day, region_id)
+    if not risk.lines:
+        return None
+
+    detail = (
+        f"Rs {risk.doomed_value_inr:,.0f} across {risk.doomed_lines} lines cannot "
+        f"sell through before it expires — the depot holds more than it can move "
+        f"in the days remaining. A further {risk.near_lines} lines expire within "
+        f"{expiry.NEAR_DAYS} days."
+    )
+    if risk.is_stale:
+        detail += (
+            f" The stock position is {risk.snapshot_age_days} days old, so treat "
+            f"these as leads rather than counts."
+        )
+    else:
+        detail += f" Counted from the {risk.snapshot_date} snapshot."
+    return Event(
+        kind="expiring_stock",
+        severity="watch",
+        headline=(
+            f"{risk.doomed_cases:,} cases will expire before they sell"
+            if risk.doomed_lines
+            else f"{risk.near_cases:,} cases expire within {expiry.NEAR_DAYS} days"
+        ),
+        owner="Planning",
+        detail=detail,
+        items=[line.__dict__ for line in risk.lines],
+        population=risk.doomed_lines or risk.near_lines,
+    )
+
+
 def day_summary(conn, day, region_id) -> dict:
     rc, args = _args(day, region_id)
     orders = conn.execute(
@@ -483,6 +525,8 @@ _RANK = {"breach": 0, "watch": 1, "info": 2}
 
 
 def _natural_id(item: dict) -> str:
+    if item.get("batch") and item.get("warehouse"):
+        return f"{item['warehouse']}/{item['batch']}"
     for key in ("ref", "warehouse", "sku", "product"):
         if item.get(key) is not None:
             return str(item[key])
@@ -522,6 +566,11 @@ def case_priority(kind: str, item: dict) -> str:
     if kind == "credit_backlog":
         # A decision queue by definition. Nothing to fix, something to rule on.
         return DECIDE
+    if kind == "expiring_stock":
+        # Still saveable — transfer it, promote it, or write it down. But the
+        # snapshot is weekly, so this is a decision to take today, not a call
+        # to make before noon.
+        return DECIDE
     return PATTERN
 
 
@@ -548,6 +597,11 @@ def item_label(kind: str, item: dict) -> str:
         short = item.get("units_short")
         qty = f"{int(short):,}" if short is not None else "?"
         return f"{item.get('product')}, {item.get('shops')} shops, {qty} short"
+    if kind == "expiring_stock":
+        return (
+            f"{item.get('product')} at {item.get('warehouse')}, "
+            f"{item.get('on_hand_cases'):,} cases, {item.get('days_left')} days left"
+        )
     if kind == "credit_backlog":
         value = item.get("value_inr")
         money = f"Rs {value:,.0f}" if value is not None else ""
@@ -588,7 +642,10 @@ def morning(conn, day: dt.date, region_id: int | None = None) -> dict:
         *refusals(conn, day, region_id),
         sku_shortfalls(conn, day, region_id),
     ]
-    standing = [credit_backlog(conn, day, region_id)]
+    standing = [
+        expiring_stock(conn, day, region_id),
+        credit_backlog(conn, day, region_id),
+    ]
     # Worst case first, then how many cases of that kind need doing. Severity
     # is kept on each event but no longer decides the order: it is assigned per
     # category, and the question here is per case.

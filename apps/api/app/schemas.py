@@ -189,6 +189,41 @@ class MoneyResponse(BaseModel):
     notes: list[str]
 
 
+class StockLineOut(BaseModel):
+    warehouse: str
+    product: str
+    sku: str
+    batch: str
+    on_hand_cases: int
+    days_left: int
+    days_of_cover: float
+    value_inr: float
+    expiry_date: str
+    cannot_sell: bool = Field(
+        description="Days of cover exceed the days left. Arithmetic, not a worry."
+    )
+
+
+class ExpiryResponse(BaseModel):
+    as_of: str
+    region: str | None = Field(
+        description="The warehouse's region. Stock sits in a DC, so that is the "
+                    "only geography that means anything here — unlike every other "
+                    "region filter, which means the shop's."
+    )
+    snapshot_date: str | None
+    snapshot_age_days: int | None
+    is_stale: bool
+    near_lines: int
+    near_cases: int
+    near_value_inr: float
+    doomed_lines: int
+    doomed_cases: int
+    doomed_value_inr: float
+    lines: list[StockLineOut]
+    notes: list[str]
+
+
 class HealthResponse(BaseModel):
     status: str
     service: str
