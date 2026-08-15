@@ -394,10 +394,15 @@ export default async function Page({
         <section>
           <Panel
             title="Stock that will expire before it sells"
+            // Always show the age. Stock is counted weekly, so moving the date
+            // a day usually leaves this panel unchanged — without the age that
+            // reads as a bug rather than as the cadence of the count.
             meta={
               stock?.snapshot_date
-                ? `Counted ${stock.snapshot_date}${
-                    stock.is_stale ? " · out of date" : ""
+                ? `Counted ${stock.snapshot_date} · ${
+                    stock.snapshot_age_days === 0
+                      ? "same day"
+                      : `${stock.snapshot_age_days}d earlier`
                   }`
                 : undefined
             }
@@ -470,7 +475,9 @@ export default async function Page({
                 <p className="mt-3 text-sm text-muted-foreground">
                   Cover is how many days the stock lasts at the current run
                   rate. Where it exceeds the days left, the stock cannot clear
-                  in time — a transfer or a promotion still can.
+                  in time — a transfer or a promotion still can. Stock is
+                  counted weekly, so this panel moves on the count, not on the
+                  day above it.
                 </p>
               </>
             ) : (
