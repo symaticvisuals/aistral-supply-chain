@@ -221,6 +221,91 @@ def temperature_flag_signal(conn) -> Finding:
     )
 
 
+def excursion_rate_is_flat(conn) -> Finding:
+    """Answers "excursions per hundred chilled deliveries, by month".
+
+    The number is computable and the series is carried in the evidence, so the
+    question has an answer. What it does not have is a use: the rate sits at
+    roughly 22 per hundred in every month, at every depot, on both telematics
+    vendors. A tile of it would be a flat line naming no action.
+
+    Note what this does *not* say. temperature_excursion_flag contradicts the
+    temperature on its own row, so it is wrong. max_temp_celsius is merely
+    unexplained by any grouping — a specific load at 16.8C is still the best
+    reading we have. Aggregate it and you get noise; keep it per delivery and it
+    is a case worth a phone call. That is why cold chain ships as cases and not
+    as a trend.
+    """
+    chilled_drop = """
+        SELECT d.delivery_id, d.max_temp_celsius AS t,
+               substr(o.order_date, 1, 7) AS mth,
+               w.warehouse_code AS wh
+          FROM deliveries d
+          JOIN orders o ON o.order_id = d.order_id
+          JOIN order_lines ol ON ol.order_id = d.order_id
+          JOIN products p ON p.product_id = ol.product_id
+          JOIN warehouses w ON w.warehouse_id = d.warehouse_id
+         WHERE d.max_temp_celsius IS NOT NULL
+         GROUP BY d.delivery_id
+        HAVING MAX(p.is_chilled) = 1"""
+
+    by_month = conn.execute(f"""
+        SELECT mth, COUNT(*) AS drops, SUM(t > 8) AS above_8,
+               100.0 * SUM(t > 8) / COUNT(*) AS per_100
+          FROM ({chilled_drop}) GROUP BY mth ORDER BY mth""").fetchall()
+    by_wh = conn.execute(f"""
+        SELECT wh, COUNT(*) AS drops,
+               100.0 * SUM(t > 8) / COUNT(*) AS per_100
+          FROM ({chilled_drop}) GROUP BY wh ORDER BY per_100 DESC""").fetchall()
+
+    spread = lambda rows: (  # noqa: E731
+        max(r["per_100"] for r in rows) - min(r["per_100"] for r in rows)
+        if len(rows) > 1 else None
+    )
+    month_spread, wh_spread = spread(by_month), spread(by_wh)
+    # Under five points across eighteen months and eight depots is one number
+    # wearing many hats.
+    flat = (
+        month_spread is not None and month_spread < 5.0
+        and wh_spread is not None and wh_spread < 5.0
+    )
+    average = (
+        sum(r["above_8"] for r in by_month) * 100.0
+        / sum(r["drops"] for r in by_month)
+    ) if by_month else None
+
+    return Finding(
+        id="EXCURSION_RATE_IS_FLAT",
+        severity="advisory" if flat else "clean",
+        statement=(
+            f"Excursions run at {average:.0f} per hundred chilled deliveries and "
+            f"stay there: {month_spread:.1f} points of spread across every month, "
+            f"{wh_spread:.1f} across every depot. The monthly series is here for "
+            f"the record, but a chart of it would be a flat line naming no action, "
+            f"so cold chain ships as individual loads instead. Those still stand — "
+            f"the temperature is unexplained by month or depot, which is not the "
+            f"same as being wrong about a given truck."
+            if flat else
+            "Excursion rates differ by month or depot enough to be worth tracking."
+        ),
+        evidence={
+            "per_100_overall": round(average, 1) if average is not None else None,
+            "by_month": [
+                {"month": r["mth"], "chilled_drops": r["drops"],
+                 "above_8c": r["above_8"], "per_100": round(r["per_100"], 1)}
+                for r in by_month
+            ],
+            "by_warehouse": [
+                {"warehouse": r["wh"], "chilled_drops": r["drops"],
+                 "per_100": round(r["per_100"], 1)} for r in by_wh
+            ],
+            "month_spread": round(month_spread, 1) if month_spread else None,
+            "warehouse_spread": round(wh_spread, 1) if wh_spread else None,
+        },
+        affects=["cold_chain"],
+    )
+
+
 def ageing_bucket_signal(conn) -> Finding:
     """Does the ageing label match the expiry date on the same row?"""
     rows = conn.execute("""
@@ -594,6 +679,7 @@ def all_findings(conn: sqlite3.Connection, window: Window) -> list[Finding]:
         route_region_mismatch(conn), outlet_fill_is_noisy(conn, window),
         return_reason_signal(conn), credit_approval_trail(conn),
         temperature_flag_signal(conn), ageing_bucket_signal(conn),
+        excursion_rate_is_flat(conn),
         line_value_is_ordered(conn), credit_leakage_immaterial(conn, window),
     ]
     rank = {"blocks_metric": 0, "advisory": 1, "clean": 2}

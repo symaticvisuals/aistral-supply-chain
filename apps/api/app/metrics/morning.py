@@ -33,9 +33,6 @@ CHILLED_BAND_MAX = 8.0
 # stock is gone", and it is why the two get different tiers.
 CHILLED_SPOILED = 12.0
 
-# A morning list nobody finishes is a morning list nobody opens.
-MAX_CASES_LISTED = 6
-
 # A stock refusal to modern trade is worse than the same refusal to a kirana:
 # MT fines on units short, so it costs money as well as service.
 PENALISING_CHANNEL = "MT"
@@ -193,7 +190,7 @@ def cold_chain(conn, day, region_id) -> Event | None:
             f"{missed_by_vendor} of these. There is no duration in the data, so "
             f"8-12C is a look and above 12C is a write-off."
         ),
-        items=items[:MAX_CASES_LISTED],
+        items=items,
         population=len(items),
     )
 
