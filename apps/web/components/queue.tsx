@@ -32,6 +32,53 @@ function asOfKey(event: MorningEvent, day: string) {
   return event.kind === "credit_backlog" ? "standing" : day
 }
 
+const FIRST_BATCH = 6
+
+function CaseRow({
+  item,
+  eventPriority,
+  asOf,
+}: {
+  item: MorningEvent["items"][number]
+  eventPriority: Priority
+  asOf: string
+}) {
+  const id = String(item.case_id ?? "")
+  const ticked = Boolean(item.done)
+  return (
+    <li className="flex items-start justify-between gap-3">
+      <span className={`min-w-0 text-sm ${ticked ? "text-muted-foreground" : ""}`}>
+        <span className={ticked ? "line-through" : undefined}>
+          {item.label ?? id}
+        </span>
+        {item.priority && item.priority !== eventPriority ? (
+          <span className="ml-2 text-xs text-muted-foreground">
+            {item.priority === "act" ? "act now" : "look"}
+          </span>
+        ) : null}
+        {item.note ? (
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            {item.note}
+          </span>
+        ) : null}
+      </span>
+      {id ? (
+        <form action={handleCase} className="shrink-0">
+          <input type="hidden" name="case_id" value={id} />
+          <input type="hidden" name="as_of" value={asOf} />
+          <input type="hidden" name="done" value={ticked ? "false" : "true"} />
+          <button
+            type="submit"
+            className="border border-border px-2 py-0.5 text-sm hover:bg-accent"
+          >
+            {ticked ? "Undo" : "Done"}
+          </button>
+        </form>
+      ) : null}
+    </li>
+  )
+}
+
 function Category({
   event,
   day,
@@ -39,10 +86,13 @@ function Category({
   event: MorningEvent
   day: string
 }) {
-  const remaining = event.items.filter((item) => !item.done).length
+  const undone = event.items.filter((item) => !item.done)
+  const done = event.items.filter((item) => item.done)
+  const actNow = undone.filter((item) => item.priority === "act").length
   const title = TITLE[event.kind] ?? event.headline
-  const more = event.population > event.items.length
   const key = asOfKey(event, day)
+  const first = undone.slice(0, FIRST_BATCH)
+  const rest = undone.slice(FIRST_BATCH)
 
   return (
     <li className={`status ${TONE[event.priority] ?? ""}`}>
@@ -50,14 +100,12 @@ function Category({
         <summary className="flex cursor-pointer list-none items-baseline justify-between gap-3 [&::-webkit-details-marker]:hidden">
           <span className="flex min-w-0 items-baseline gap-3">
             <span className="w-8 shrink-0 text-xl font-semibold tabular-nums">
-              {num(remaining)}
+              {num(undone.length)}
             </span>
             <span className="font-semibold">{title}</span>
-            {/* Only worth saying when the category is mixed — otherwise the
-                tier heading above already said it. */}
-            {event.act_now > 0 && event.act_now < event.items.length ? (
+            {actNow > 0 && actNow < undone.length ? (
               <span className="shrink-0 text-sm text-breach">
-                {num(event.act_now)} now
+                {num(actNow)} now
               </span>
             ) : null}
           </span>
@@ -65,59 +113,53 @@ function Category({
             {event.owner}
           </span>
         </summary>
+        {/* Why this category is here and how it was measured. The API computes
+            it per request; leaving it out was how the cold chain reasoning
+            stopped reaching the screen. */}
+        {event.detail ? (
+          <p className="mt-2 text-sm text-muted-foreground">{event.detail}</p>
+        ) : null}
         <ul className="mt-3 space-y-2.5">
-          {event.items.map((item) => {
-            const id = String(item.case_id ?? "")
-            const ticked = Boolean(item.done)
-            return (
-              <li
-                key={id || String(item.label)}
-                className="flex items-start justify-between gap-3"
-              >
-                <span
-                  className={`min-w-0 text-sm ${
-                    ticked ? "text-muted-foreground" : ""
-                  }`}
-                >
-                  <span className={ticked ? "line-through" : undefined}>
-                    {item.label ?? id}
-                  </span>
-                  {/* Flag a case only where it is not what the tier heading
-                      promised — a cooler load inside a hot category. */}
-                  {item.priority && item.priority !== event.priority ? (
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {item.priority === "act" ? "act now" : "look"}
-                    </span>
-                  ) : null}
-                  {item.note ? (
-                    <span className="mt-0.5 block text-xs text-muted-foreground">
-                      {item.note}
-                    </span>
-                  ) : null}
-                </span>
-                {id ? (
-                  <form action={handleCase} className="shrink-0">
-                    <input type="hidden" name="case_id" value={id} />
-                    <input type="hidden" name="as_of" value={key} />
-                    <input
-                      type="hidden"
-                      name="done"
-                      value={ticked ? "false" : "true"}
+          {first.map((item) => (
+            <CaseRow
+              key={String(item.case_id ?? item.label)}
+              item={item}
+              eventPriority={event.priority}
+              asOf={key}
+            />
+          ))}
+          {rest.length ? (
+            <li>
+              <details>
+                <summary className="cursor-pointer list-none text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
+                  {num(rest.length)} more
+                </summary>
+                <ul className="mt-2.5 space-y-2.5">
+                  {rest.map((item) => (
+                    <CaseRow
+                      key={String(item.case_id ?? item.label)}
+                      item={item}
+                      eventPriority={event.priority}
+                      asOf={key}
                     />
-                    <button
-                      type="submit"
-                      className="border border-border px-2 py-0.5 text-sm hover:bg-accent"
-                    >
-                      {ticked ? "Undo" : "Done"}
-                    </button>
-                  </form>
-                ) : null}
-              </li>
-            )
-          })}
-          {more ? (
-            <li className="text-sm text-muted-foreground">
-              {num(event.population)} in all. These are the ones to work first.
+                  ))}
+                </ul>
+              </details>
+            </li>
+          ) : null}
+          {done.length ? (
+            <li className="pt-1 text-xs text-muted-foreground">
+              {num(done.length)} marked done
+              <ul className="mt-2 space-y-2.5">
+                {done.map((item) => (
+                  <CaseRow
+                    key={String(item.case_id ?? item.label)}
+                    item={item}
+                    eventPriority={event.priority}
+                    asOf={key}
+                  />
+                ))}
+              </ul>
             </li>
           ) : null}
         </ul>
@@ -137,10 +179,16 @@ export function Queue({
   standing: MorningEvent[]
   priorities: { id: Priority; label: string }[]
 }) {
-  const openCount = [...events, ...standing].reduce((n, event) => {
-    return n + event.items.filter((item) => !item.done).length
-  }, 0)
-  const actNow = events.reduce((n, e) => n + e.act_now, 0)
+  const all = [...events, ...standing]
+  const openCount = all.reduce(
+    (n, event) => n + event.items.filter((item) => !item.done).length,
+    0
+  )
+  const actNow = events.reduce(
+    (n, event) =>
+      n + event.items.filter((item) => item.priority === "act" && !item.done).length,
+    0
+  )
 
   return (
     <section className="flex h-full flex-col border border-border bg-card">
