@@ -12,7 +12,10 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
     >
       <table
         data-slot="table"
-        className={cn("w-full caption-bottom text-sm", className)}
+        className={cn(
+          "w-full caption-bottom border-collapse font-mono text-[11px] tabular-nums",
+          className
+        )}
         {...props}
       />
     </div>
@@ -23,7 +26,12 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      // One hard ink rule under the header. border-solid is explicit because
+      // TableRow sets border-dashed and would otherwise win the cascade.
+      className={cn(
+        "[&_tr]:border-b [&_tr]:border-solid [&_tr]:border-foreground",
+        className
+      )}
       {...props}
     />
   )
@@ -44,7 +52,7 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
     <tfoot
       data-slot="table-footer"
       className={cn(
-        "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+        "border-t border-foreground/40 text-[11px] text-muted-foreground [&>tr]:last:border-b-0",
         className
       )}
       {...props}
@@ -57,7 +65,9 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+        // No last:border-b-0 here — in <thead> the only row is :last-child and
+        // would cancel the header rule. TableBody drops the final rule instead.
+        "border-b border-border/50 transition-colors hover:bg-accent/70 has-aria-expanded:bg-accent/60 data-[state=selected]:bg-accent",
         className
       )}
       {...props}
@@ -70,7 +80,8 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        // Figures right, labels left — the reading order of a ledger.
+        "h-8 px-2 text-right align-bottom text-[11px] font-medium whitespace-nowrap text-muted-foreground first:text-left [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
@@ -83,7 +94,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        "px-2 py-1.5 text-right align-middle whitespace-nowrap first:text-left [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
@@ -98,7 +109,10 @@ function TableCaption({
   return (
     <caption
       data-slot="table-caption"
-      className={cn("mt-4 text-sm text-muted-foreground", className)}
+      className={cn(
+        "mb-1.5 caption-top text-left text-[0.95rem] font-semibold tracking-tight text-foreground",
+        className
+      )}
       {...props}
     />
   )

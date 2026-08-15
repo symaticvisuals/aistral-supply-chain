@@ -2,13 +2,17 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Declared so `dark:` utilities still compile. Nothing ever carries .dark —
+   this theme is paper, read in daylight, and a second palette would be a
+   second design language wearing the same components. */
 @custom-variant dark (&:is(.dark *));
 @source "../../../apps/**/*.{ts,tsx}";
 @source "../../../components/**/*.{ts,tsx}";
 @source "../**/*.{ts,tsx}";
 
 @theme inline {
-  --font-heading: var(--font-sans);
+  --font-display: var(--font-display);
+  --font-heading: var(--font-display);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -42,10 +46,25 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-trust: var(--trust);
-  --color-trust-foreground: var(--trust-foreground);
+
+  /* Status scale — how bad is this number, at a glance, every morning. */
+  --color-ok: var(--ok);
+  --color-watch: var(--watch);
+  --color-breach: var(--breach);
+  --color-refused: var(--refused);
+
+  /* Operational axes. Temperature is a real column in the data (AMBIENT 253
+     SKUs, CHILLED 88), and the two personas each read a different unit. */
+  --color-chilled: var(--chilled);
+  --color-cases: var(--cases);
+  --color-eaches: var(--eaches);
+
+  --color-panel: var(--panel);
+  --color-rule: var(--rule);
+  --color-ink: var(--ink);
+  --color-warning: var(--watch);
+  --color-warning-foreground: var(--card);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -56,95 +75,126 @@
 }
 
 /*
-  Control tower theme.
-  Fluorescent godown light, packing-slip paper, steel ink.
-  Hazard red for worst-first exceptions. Amber tape for dirty-data notices.
+  Control tower theme — built for a screen someone reads every morning.
+
+  Keeps the dossier bones from kestrel-mindmap.html (square corners, hard rules,
+  mono figures) but lightens the ground and reserves weight for meaning. Cards
+  are near-white so data sits on the brightest surface; the page behind them is
+  kraft, not tan, so hours of reading do not fight the reader.
+
+  Colour is a status system, not decoration. Every value below clears 4.5:1 on
+  both the card and the page, so a status word is legible wherever it lands.
 */
 :root {
-  --background: oklch(0.932 0.006 247);
-  --foreground: oklch(0.24 0.012 250);
-  --card: oklch(0.968 0.004 247);
-  --card-foreground: oklch(0.24 0.012 250);
-  --popover: oklch(0.968 0.004 247);
-  --popover-foreground: oklch(0.24 0.012 250);
-  --primary: oklch(0.28 0.018 250);
-  --primary-foreground: oklch(0.97 0.004 247);
-  --secondary: oklch(0.9 0.008 247);
-  --secondary-foreground: oklch(0.28 0.018 250);
-  --muted: oklch(0.9 0.008 247);
-  --muted-foreground: oklch(0.48 0.018 250);
-  --accent: oklch(0.9 0.008 247);
-  --accent-foreground: oklch(0.28 0.018 250);
-  --destructive: oklch(0.56 0.165 29);
-  --border: oklch(0.845 0.01 247);
-  --input: oklch(0.845 0.01 247);
-  --ring: oklch(0.56 0.165 29);
-  --warning: oklch(0.75 0.145 85);
-  --warning-foreground: oklch(0.28 0.04 70);
-  --trust: oklch(0.9 0.08 85);
-  --trust-foreground: oklch(0.3 0.05 70);
-  --chart-1: oklch(0.56 0.165 29);
-  --chart-2: oklch(0.55 0.08 247);
-  --chart-3: oklch(0.75 0.145 85);
-  --chart-4: oklch(0.45 0.04 250);
-  --chart-5: oklch(0.32 0.02 250);
-  --radius: 0.25rem;
-  --sidebar: oklch(0.91 0.007 247);
-  --sidebar-foreground: oklch(0.24 0.012 250);
-  --sidebar-primary: oklch(0.56 0.165 29);
-  --sidebar-primary-foreground: oklch(0.98 0.004 247);
-  --sidebar-accent: oklch(0.9 0.008 247);
-  --sidebar-accent-foreground: oklch(0.28 0.018 250);
-  --sidebar-border: oklch(0.845 0.01 247);
-  --sidebar-ring: oklch(0.56 0.165 29);
-}
+  --background: #dad3c2;
+  --foreground: #1b1914;
+  --ink: #1b1914;
+  --card: #f7f4ed;
+  --card-foreground: #1b1914;
+  --panel: #fffdf7;
+  --popover: #fffdf7;
+  --popover-foreground: #1b1914;
+  --primary: #1b1914;
+  --primary-foreground: #f7f4ed;
+  --secondary: #ebe6da;
+  --secondary-foreground: #1b1914;
+  --muted: #ebe6da;
+  --muted-foreground: #5a5446;
+  --accent: #e6e0d1;
+  --accent-foreground: #1b1914;
 
-.dark {
-  --background: oklch(0.2 0.012 250);
-  --foreground: oklch(0.93 0.006 247);
-  --card: oklch(0.24 0.012 250);
-  --card-foreground: oklch(0.93 0.006 247);
-  --popover: oklch(0.24 0.012 250);
-  --popover-foreground: oklch(0.93 0.006 247);
-  --primary: oklch(0.93 0.006 247);
-  --primary-foreground: oklch(0.22 0.012 250);
-  --secondary: oklch(0.28 0.014 250);
-  --secondary-foreground: oklch(0.93 0.006 247);
-  --muted: oklch(0.28 0.014 250);
-  --muted-foreground: oklch(0.72 0.014 247);
-  --accent: oklch(0.28 0.014 250);
-  --accent-foreground: oklch(0.93 0.006 247);
-  --destructive: oklch(0.68 0.16 28);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.68 0.16 28);
-  --warning: oklch(0.78 0.14 85);
-  --warning-foreground: oklch(0.22 0.04 70);
-  --trust: oklch(0.38 0.06 85);
-  --trust-foreground: oklch(0.92 0.05 90);
-  --chart-1: oklch(0.68 0.16 28);
-  --chart-2: oklch(0.7 0.06 247);
-  --chart-3: oklch(0.78 0.14 85);
-  --chart-4: oklch(0.62 0.03 250);
-  --chart-5: oklch(0.85 0.01 247);
-  --sidebar: oklch(0.22 0.012 250);
-  --sidebar-foreground: oklch(0.93 0.006 247);
-  --sidebar-primary: oklch(0.68 0.16 28);
-  --sidebar-primary-foreground: oklch(0.98 0.004 247);
-  --sidebar-accent: oklch(0.28 0.014 250);
-  --sidebar-accent-foreground: oklch(0.93 0.006 247);
-  --sidebar-border: oklch(1 0 0 / 12%);
-  --sidebar-ring: oklch(0.68 0.16 28);
+  /* A boundary you can actually see: 3.47:1 against the card. Ink is reserved
+     for emphasis — a selected row, a focused control — so it still means
+     something when it appears. */
+  --rule: #8a8270;
+  --border: #8a8270;
+  --input: #8a8270;
+  --ring: #1b1914;
+
+  /* Status: how worried should she be. Three steps, nothing in between. */
+  --ok: #2a663a;
+  --watch: #7e520b;
+  --breach: #a3201c;
+  --destructive: #a3201c;
+
+  /* Refused is deliberately grey, not red. A cancelled order is an absence,
+     not a late delivery, and colouring it like a failure hides the difference. */
+  --refused: #5a5446;
+
+  /* Cold chain. AMBIENT is the default and takes no colour; only CHILLED is
+     marked, because only chilled can go wrong quietly. */
+  --chilled: #1a5580;
+
+  /* The two readers. Divya commits in cases, Rakesh is fined in eaches. */
+  --cases: #23406a;
+  --eaches: #8a2318;
+
+  --chart-1: #23406a;
+  --chart-2: #8a2318;
+  --chart-3: #7e520b;
+  --chart-4: #1a5580;
+  --chart-5: #2a663a;
+
+  /* Squared off. Every rounded-* utility in the kit collapses to zero. */
+  --radius: 0rem;
+
+  --sidebar: #ebe6da;
+  --sidebar-foreground: #1b1914;
+  --sidebar-primary: #1b1914;
+  --sidebar-primary-foreground: #f7f4ed;
+  --sidebar-accent: #e6e0d1;
+  --sidebar-accent-foreground: #1b1914;
+  --sidebar-border: #8a8270;
+  --sidebar-ring: #1b1914;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
+
+  /* Flat. The mind map's ruled paper is a poster texture; behind a table read
+     every morning it is just noise competing with the figures. */
   body {
     @apply bg-background text-foreground;
   }
+
   html {
+    /* tnum keeps columns of figures aligned. A control tower is mostly figures. */
     font-feature-settings: "ss01" on, "tnum" on;
+  }
+
+  /* Focus is a hard ink outline, not a soft halo. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+  }
+}
+
+@layer components {
+  /* A small mono label above a value: "Case fill", "FY26 Q1". Sentence case,
+     because uppercase is slower to read and this appears dozens of times. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--muted-foreground);
+  }
+
+  /* The headline number on a tile. Teko earns its place at this size and
+     nowhere else; tnum keeps it from shifting as values update. */
+  .figure {
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 0.85;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+
+  /* A status needs to survive being scanned, not read. Colour carries it, and
+     a left rule gives it a second, non-colour signal. */
+  .status {
+    border-left: 3px solid currentColor;
+    padding-left: 0.55rem;
   }
 }

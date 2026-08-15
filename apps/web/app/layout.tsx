@@ -1,8 +1,7 @@
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google"
+import { IBM_Plex_Mono, IBM_Plex_Sans, Teko } from "next/font/google"
 import type { Metadata } from "next"
 
 import "@workspace/ui/globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@workspace/ui/lib/utils"
 
 const sans = IBM_Plex_Sans({
@@ -17,9 +16,17 @@ const mono = IBM_Plex_Mono({
   variable: "--font-mono",
 })
 
+// Condensed and headline-only. Teko is the loudest thing in the theme, so it
+// never sets body copy — headings and figures, nothing else.
+const display = Teko({
+  subsets: ["latin"],
+  weight: ["500", "600"],
+  variable: "--font-display",
+})
+
 export const metadata: Metadata = {
-  title: "Kestrel",
-  description: "Kestrel monorepo",
+  title: "Kestrel Control Tower",
+  description: "What happened yesterday: where service failed, where cash leaked.",
 }
 
 export default function RootLayout({
@@ -30,12 +37,15 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      suppressHydrationWarning
-      className={cn("antialiased", sans.variable, mono.variable, "font-sans")}
+      className={cn(
+        "antialiased",
+        sans.variable,
+        mono.variable,
+        display.variable,
+        "font-sans"
+      )}
     >
-      <body>
-        <ThemeProvider defaultTheme="light">{children}</ThemeProvider>
-      </body>
+      <body>{children}</body>
     </html>
   )
 }
