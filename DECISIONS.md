@@ -1,74 +1,69 @@
 # Decisions
 
-Working notes. One entry per decision, added as we build.
+## 1 · What we built
 
-## 1 · Where we started
+One screen, one day, not a quarter — a quarter is a board number and barely moves,
+and the complaint is about yesterday. The day appears twice, boxes for Divya and
+pieces for Rakesh, because both are correct and hiding either restarts the
+argument. Regional managers get it filtered; Q1 sits on it for the board. Beside
+it: credit notes against what shipped, and stock that will expire before it sells.
+We read the data first, and two of the numbers the brief asks for turned out to be
+unanswerable.
 
-We read the data before deciding what to build. That changed the plan. Several of
-the problems the brief warns about are not actually in the data, and two of the
-numbers it asks for cannot be produced honestly — nothing here ever arrives
-complete, and the two records of lateness disagree with each other. So we stopped
-trying to answer those and spent the time on the one thing everyone in the brief
-argues about: how much of what a shop ordered actually turned up.
+## 2 · Ordering the work
 
-We built it as yesterday rather than as a quarter. A quarter is a board number and
-it barely moves; the complaint is about not knowing what happened yesterday. And we
-show the same day twice — in boxes for Divya, in units for Rakesh — because both are
-correct, and hiding either one starts the argument again. Regional managers get the
-same thing, filtered to their region.
+A list of what broke is not a morning. Each case is tiered by one question — **can
+what I do this morning still change the outcome?** Act before noon, decide today,
+or a pattern to watch.
 
-## 2 · What we built
+We did not score them. A warm load is spoiled rupees, a refusal is pieces never
+sent, a late delivery lost nothing because the goods arrived. Those do not add up,
+so we do not add them up; one blended urgency number is the same dishonesty as
+blending case fill with piece fill. Within a tier we rank on the case's own
+exposure and print it, so Divya can disagree and still see why.
 
-One screen for one day: which shops did not get what they ordered, in boxes and in
-units, each failure listed as something to do and a desk to call. Move the date,
-filter to a region, or switch to the quarter when the board asks. The type is one
-readable sans. Mono and condensed display made this look like a developer console.
-
-Under it, one place computes every number. Every row we leave out of a total is
-named and counted on the screen, because silent filters are how four people ended
-up with four answers.
+Ticking a case off writes to a shared file, so it leaves everyone's queue, not one
+browser. No login, so we record that a case was handled, never who by.
 
 ## 3 · What we did not build
 
-- **OTIF.** Nothing in eighteen months ever arrived complete, so the tile would read
-  zero every day. We report why instead.
-- **On-time.** The two records of lateness agree on one delivery in eight. Either
-  number is a guess.
-- **Competitor prices.** A second system — scrape the site, then match our SKUs to
-  their listings. Real work, but not a morning problem.
-- **Freight per case.** The carrier bills carry no order or delivery number, so a
-  rupee can never be traced back to a shop.
-- **Ask-anything.** A question box is only as honest as the layer beneath it. A
-  confident wrong number costs more than no box.
+- **OTIF.** Nothing in eighteen months arrived complete; the tile would read zero.
+- **On-time.** The two lateness records agree on one delivery in eight.
+- **Competitor prices.** A second system: scrape, then match SKUs.
+- **Freight per case.** Carrier bills carry no order number; a rupee cannot reach
+  a shop.
+- **Ask-anything.** Only as honest as the layer beneath it.
 - **Login and tabs.** One screen was the ask.
 
 ## 4 · What we assumed
 
-- Fill is cases *and* eaches, converted line by line using the pack size recorded at
-  order time — not the product master, which moves when a SKU is repacked.
-- A cancellation counts against us when we caused it. Out of stock, clearly. Credit
-  hold is arguable, so it is one named setting and the screen says it is contested.
-- Outlets named "test" or "do not use" are dropped and listed by name, so a wrong
-  guess is visible rather than silent.
-- The year starts in April, and a quarter takes the name of the year it starts in.
-- "Today" is the last day in the data. The real date would show an empty screen.
+- Fill is cases *and* pieces, converted per line on pack size at order time — not
+  the product master, which moves when a SKU is repacked.
+- A cancellation counts against us when we caused it. Stock, clearly; a credit
+  hold is arguable, so it is one named setting the screen calls contested.
+- **Four columns carry no signal and we ignore all four**: both reason codes, the
+  excursion flag, the ageing bucket. Each is a finding at `/metrics/quality`,
+  computed per request rather than asserted here.
+- **Cold chain is measured, not read.** An excursion is chilled stock delivered
+  above 8C. Past 12C it is gone regardless of duration; 8–12C turns on how long,
+  which nothing records — hence two tiers.
+- **Expiry** flags stock whose cover exceeds the days left. Cover tops out at 40
+  here, so a slow mover with three months left is invisible. Counted weekly.
+- Test outlets are dropped and named. The year starts in April. "Today" is the
+  last day in the data.
 
 ## 5 · Next two weeks
 
-- The morning queue is now a count per category. Open a row to see the cases
-  and tick one off; that write is shared, so it leaves everyone's list.
-- Returns and credit notes against dispatch value — the money half of the brief,
-  and the same shape as what already exists.
-- Cold chain as a rate per hundred chilled deliveries, not only as today's alerts.
-- Freight in at warehouse level, labelled for what it can and cannot answer.
+- Excursions per hundred chilled deliveries, so cold chain is a trend too.
+- Freight at warehouse level, labelled for what it cannot answer.
+- Who ticked a case off — which needs identity, which needs a login.
 
 ## 6 · What breaks first
 
-- **Load.** Every number is computed live, with no cache. A quarter across half a
-  million lines takes a tenth of a second today, but a hundred people at nine in the
-  morning would feel it. The fix is a nightly rollup by day and region.
-- **The date.** It comes from the data. On a live feed, "yesterday" has to mean
-  yesterday, which means deciding when a day is closed.
-- **One field.** The whole cases-to-eaches conversion rests on pack size at order
-  time. It is clean today. If a source system starts sending nulls, the two numbers
-  drift apart quietly — that needs a guard before anything else does.
+- **Load.** Numbers are computed live, no cache. A quarter over half a million
+  lines takes a tenth of a second; a hundred people at nine would feel it. The fix
+  is a nightly rollup by day and region.
+- **The date.** It comes from the data. On a live feed "yesterday" must mean
+  yesterday, which means deciding when a day closes.
+- **One field.** Cases-to-pieces rests on pack size at order time. If a source
+  starts sending nulls, the two numbers drift apart quietly.
