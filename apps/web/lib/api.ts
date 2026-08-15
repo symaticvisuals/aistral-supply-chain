@@ -140,6 +140,30 @@ export type Money = {
   notes: string[]
 }
 
+export type Expiry = {
+  as_of: string
+  snapshot_date: string | null
+  snapshot_age_days: number | null
+  is_stale: boolean
+  near_lines: number
+  near_cases: number
+  near_value_inr: number
+  doomed_lines: number
+  doomed_cases: number
+  doomed_value_inr: number
+  lines: {
+    warehouse: string
+    product: string
+    batch: string
+    on_hand_cases: number
+    days_left: number
+    days_of_cover: number
+    value_inr: number
+    cannot_sell: boolean
+  }[]
+  notes: string[]
+}
+
 const qs = (params: Record<string, string | undefined>) => {
   const q = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) if (v) q.set(k, v)
@@ -160,6 +184,11 @@ export const getOutlets = (region?: string, limit = 5) =>
 
 export const getMoney = (region?: string) =>
   get<Money>(`/metrics/money${qs({ region })}`)
+
+export const getExpiry = (region?: string, asOf?: string, limit = 6) =>
+  get<Expiry>(
+    `/metrics/expiry${qs({ region, as_of: asOf, limit: String(limit) })}`
+  )
 
 export async function markHandled(
   caseId: string,

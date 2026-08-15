@@ -3,6 +3,7 @@ import Link from "next/link"
 import { DayPicker } from "@/components/day-picker"
 import { Queue } from "@/components/queue"
 import {
+  getExpiry,
   getFill,
   getMoney,
   getMorning,
@@ -75,7 +76,7 @@ function Unreachable({
   return (
     <div className="border border-breach bg-card p-5">
       <p className="eyebrow text-breach">
-        {failures.length} of 4 numbers did not load
+        {failures.length} of 5 numbers did not load
       </p>
       <ul className="mt-1.5 space-y-1">
         {failures.map((f) => (
@@ -166,13 +167,15 @@ export default async function Page({
     getFill(region),
     getOutlets(region, 5),
     getMoney(region),
+    getExpiry(region, asOf, 6),
   ] as const
-  const [morning, fill, outlets, money] = await Promise.all(calls)
+  const [morning, fill, outlets, money, expiry] = await Promise.all(calls)
 
   const day = morning.ok ? morning.data : null
   const q = fill.ok ? fill.data : null
   const m = money.ok ? money.data : null
-  const failures = [morning, fill, outlets, money]
+  const stock = expiry.ok ? expiry.data : null
+  const failures = [morning, fill, outlets, money, expiry]
     .filter((r): r is Extract<ApiResult<never>, { ok: false }> => !r.ok)
     .map(({ error, url }) => ({ error, url }))
 
@@ -384,6 +387,98 @@ export default async function Page({
               </table>
             ) : (
               <p className="text-muted-foreground">No data.</p>
+            )}
+          </Panel>
+        </section>
+
+        <section>
+          <Panel
+            title="Stock that will expire before it sells"
+            meta={
+              stock?.snapshot_date
+                ? `Counted ${stock.snapshot_date}${
+                    stock.is_stale ? " · out of date" : ""
+                  }`
+                : undefined
+            }
+          >
+            {stock && stock.lines.length ? (
+              <>
+                <p className="text-[15px]">
+                  <span className="font-semibold text-breach">
+                    {inr(stock.doomed_value_inr)}
+                  </span>{" "}
+                  across {num(stock.doomed_lines)} lines cannot sell through in
+                  the days left — the depot holds more than it can move. A
+                  further {num(stock.near_lines)} lines expire within a month.
+                </p>
+                <table className="mt-3 w-full border-collapse text-[15px] tabular-nums">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="pb-2 text-left text-sm font-semibold text-muted-foreground">
+                        Product
+                      </th>
+                      <th className="pb-2 text-left text-sm font-semibold text-muted-foreground">
+                        DC
+                      </th>
+                      <th className="pb-2 text-right text-sm font-semibold text-muted-foreground">
+                        Cases
+                      </th>
+                      <th className="pb-2 text-right text-sm font-semibold text-muted-foreground">
+                        Days left
+                      </th>
+                      <th className="pb-2 text-right text-sm font-semibold text-muted-foreground">
+                        Cover
+                      </th>
+                      <th className="pb-2 text-right text-sm font-semibold text-muted-foreground">
+                        Value
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stock.lines.map((line) => (
+                      <tr
+                        key={`${line.warehouse}/${line.batch}`}
+                        className="border-b border-border/40"
+                      >
+                        <td className="py-2.5">{line.product}</td>
+                        <td className="py-2.5 text-muted-foreground">
+                          {line.warehouse}
+                        </td>
+                        <td className="py-2.5 text-right">
+                          {num(line.on_hand_cases)}
+                        </td>
+                        <td className="py-2.5 text-right">{line.days_left}</td>
+                        {/* Cover above days left is the whole point: read the
+                            two side by side and the arithmetic is visible. */}
+                        <td
+                          className={`py-2.5 text-right ${
+                            line.cannot_sell
+                              ? "font-semibold text-breach"
+                              : "text-muted-foreground"
+                          }`}
+                        >
+                          {num(line.days_of_cover, 1)}
+                        </td>
+                        <td className="py-2.5 text-right font-semibold">
+                          {inr(line.value_inr)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Cover is how many days the stock lasts at the current run
+                  rate. Where it exceeds the days left, the stock cannot clear
+                  in time — a transfer or a promotion still can.
+                </p>
+              </>
+            ) : (
+              <p className="text-muted-foreground">
+                {stock
+                  ? "Nothing on the rack is at risk on this snapshot."
+                  : "No data."}
+              </p>
             )}
           </Panel>
         </section>

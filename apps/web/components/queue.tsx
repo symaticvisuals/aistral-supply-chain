@@ -8,6 +8,7 @@ const TITLE: Record<string, string> = {
   credit_refusal: "Credit holds",
   sku_short: "Short SKUs",
   credit_backlog: "Undecided credit notes",
+  expiring_stock: "Stock that will expire first",
 }
 
 // The tier drives the colour, not the category. A case that can still be
