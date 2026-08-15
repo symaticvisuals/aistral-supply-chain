@@ -1,8 +1,8 @@
 import { handleCase } from "@/app/actions"
-import type { MorningEvent } from "@/lib/api"
+import type { MorningEvent, Priority } from "@/lib/api"
 
 const TITLE: Record<string, string> = {
-  cold_chain: "Warm deliveries",
+  cold_chain: "Warm chilled loads",
   late_delivery: "Late warehouses",
   stockout_refusal: "No stock",
   credit_refusal: "Credit holds",
@@ -10,10 +10,19 @@ const TITLE: Record<string, string> = {
   credit_backlog: "Undecided credit notes",
 }
 
-const TONE: Record<string, string> = {
-  breach: "text-breach",
-  watch: "text-watch",
-  info: "text-muted-foreground",
+// The tier drives the colour, not the category. A case that can still be
+// changed this morning reads hot wherever it sits.
+const TONE: Record<Priority, string> = {
+  act: "text-breach",
+  decide: "text-watch",
+  pattern: "text-muted-foreground",
+}
+
+// Why the tier exists, in Divya's terms rather than the rule's.
+const REASON: Record<Priority, string> = {
+  act: "This morning still changes the outcome.",
+  decide: "The loss is booked. Someone has to rule on it.",
+  pattern: "Nothing to fix case by case. Watch the trend.",
 }
 
 const num = (n: number) => n.toLocaleString("en-IN")
@@ -35,7 +44,7 @@ function Category({
   const key = asOfKey(event, day)
 
   return (
-    <li className={`status ${TONE[event.severity] ?? ""}`}>
+    <li className={`status ${TONE[event.priority] ?? ""}`}>
       <details>
         <summary className="flex cursor-pointer list-none items-baseline justify-between gap-3 [&::-webkit-details-marker]:hidden">
           <span className="flex min-w-0 items-baseline gap-3">
@@ -43,6 +52,13 @@ function Category({
               {num(remaining)}
             </span>
             <span className="font-semibold">{title}</span>
+            {/* Only worth saying when the category is mixed — otherwise the
+                tier heading above already said it. */}
+            {event.act_now > 0 && event.act_now < event.items.length ? (
+              <span className="shrink-0 text-sm text-breach">
+                {num(event.act_now)} now
+              </span>
+            ) : null}
           </span>
           <span className="shrink-0 text-sm text-muted-foreground">
             {event.owner}
@@ -65,6 +81,13 @@ function Category({
                   <span className={ticked ? "line-through" : undefined}>
                     {item.label ?? id}
                   </span>
+                  {/* Flag a case only where it is not what the tier heading
+                      promised — a cooler load inside a hot category. */}
+                  {item.priority && item.priority !== event.priority ? (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {item.priority === "act" ? "act now" : "look"}
+                    </span>
+                  ) : null}
                   {item.note ? (
                     <span className="mt-0.5 block text-xs text-muted-foreground">
                       {item.note}
@@ -106,14 +129,17 @@ export function Queue({
   asOf,
   events,
   standing,
+  priorities,
 }: {
   asOf: string
   events: MorningEvent[]
   standing: MorningEvent[]
+  priorities: { id: Priority; label: string }[]
 }) {
   const openCount = [...events, ...standing].reduce((n, event) => {
     return n + event.items.filter((item) => !item.done).length
   }, 0)
+  const actNow = events.reduce((n, e) => n + e.act_now, 0)
 
   return (
     <section className="flex h-full flex-col border border-border bg-card">
@@ -121,15 +147,40 @@ export function Queue({
         <h2 className="text-lg font-semibold tracking-tight">
           Yesterday, to do
         </h2>
-        <p className="text-sm text-muted-foreground">{openCount} open</p>
+        <p className="text-sm text-muted-foreground">
+          {actNow ? (
+            <span className="text-breach">{actNow} before noon</span>
+          ) : null}
+          {actNow ? " · " : ""}
+          {openCount} open
+        </p>
       </header>
       <div className="min-w-0 flex-1 px-5 py-4">
         {events.length ? (
-          <ul className="space-y-3">
-            {events.map((event) => (
-              <Category key={event.kind} event={event} day={asOf} />
-            ))}
-          </ul>
+          <div className="space-y-5">
+            {priorities.map(({ id, label }) => {
+              const inTier = events.filter((e) => e.priority === id)
+              if (!inTier.length) return null
+              return (
+                <div key={id}>
+                  <p
+                    className={`text-sm font-semibold ${TONE[id]}`}
+                    title={REASON[id]}
+                  >
+                    {label}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {REASON[id]}
+                  </p>
+                  <ul className="mt-2.5 space-y-3">
+                    {inTier.map((event) => (
+                      <Category key={event.kind} event={event} day={asOf} />
+                    ))}
+                  </ul>
+                </div>
+              )
+            })}
+          </div>
         ) : (
           <p className="text-muted-foreground">
             Nothing broke on this day. An empty list is a real answer.

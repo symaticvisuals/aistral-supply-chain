@@ -280,7 +280,12 @@ export default async function Page({
         </section>
 
         {day ? (
-          <Queue asOf={day.as_of} events={day.events} standing={day.standing} />
+          <Queue
+            asOf={day.as_of}
+            events={day.events}
+            standing={day.standing}
+            priorities={day.priorities}
+          />
         ) : (
           <Panel title="Yesterday">
             <p className="text-muted-foreground">No data.</p>

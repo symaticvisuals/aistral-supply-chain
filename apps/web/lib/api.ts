@@ -35,11 +35,14 @@ async function get<T>(path: string): Promise<ApiResult<T>> {
   }
 }
 
+export type Priority = "act" | "decide" | "pattern"
+
 export type EventItem = Record<string, string | number | boolean | null> & {
   case_id?: string
   label?: string
   done?: boolean
   note?: string
+  priority?: Priority
 }
 
 export type MorningEvent = {
@@ -50,6 +53,10 @@ export type MorningEvent = {
   detail: string
   items: EventItem[]
   population: number
+  /** The worst case in this category. */
+  priority: Priority
+  /** Cases here that need doing this morning. */
+  act_now: number
 }
 
 export type Morning = {
@@ -68,6 +75,8 @@ export type Morning = {
   events: MorningEvent[]
   /** Already true before the day started. Never merged into events. */
   standing: MorningEvent[]
+  /** Tier labels come from the API so the screen never hardcodes them. */
+  priorities: { id: Priority; label: string }[]
   notes: string[]
 }
 
