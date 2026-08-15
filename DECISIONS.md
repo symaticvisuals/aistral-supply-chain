@@ -27,7 +27,15 @@ browser. No login, so we record that a case was handled, never who by.
 
 - **OTIF.** Nothing in eighteen months arrived complete; the tile would read zero.
 - **On-time.** The two lateness records agree on one delivery in eight.
-- **Competitor prices.** A second system: scrape, then match SKUs.
+- **A price panel.** The tracker is not a competitor tracker: all 1,137 listings
+  are SKUs we distribute, and none of the five chains is an outlet of ours, so
+  brand against brand would be us against us. What is left is one column on the
+  expiry panel — the lowest price shops charge, which is what says whether a
+  markdown has room — and a count of listings sold above the printed MRP beside
+  the credit notes. Divya's fourth ask is answered and then declined: the gap is
+  1.2 points across four cities, so no city ranking.
+- **A price-movement alert.** Lag-1 correlation −0.202 on six observations is
+  what pure noise gives; "cut its price this week" is last week's dice.
 - **Freight per case.** Carrier bills carry no order number; a rupee cannot reach
   a shop.
 - **Ask-anything.** Only as honest as the layer beneath it.
@@ -47,12 +55,15 @@ arguing with.
 | Chilled above 8C is an excursion, above 12C a write-off | The data has a peak temperature and no duration | A load at 9C is either over-called or ignored |
 | Cover above days left means it cannot sell through | Cover tops out at 40 in this data | A slow mover with three months left is invisible |
 | "Today" is the last day in the data | The pack is frozen | The screen is empty |
+| A shelf price is the mean of its six weekly readings | The series has no trend, so one reading is one draw from a 9.4% range | We would call a wobble a markdown |
+| A DC's stock is priced against its own metro's shelf | Four DCs sit in scraped cities | Bhiwandi feeds more than Mumbai, so the city is printed on the row and the reader can reject it |
 
 Test outlets are dropped and named on screen. The fiscal year starts in April.
 
 ## 5 · Next two weeks
 
-- Excursions per hundred chilled deliveries, so cold chain is a trend too.
+- Shelf prices for the other four depot cities; today the column is blank for
+  115 of the 147 lines that cannot clear.
 - Freight at warehouse level, labelled for what it cannot answer.
 - Who ticked a case off — which needs identity, which needs a login.
 
