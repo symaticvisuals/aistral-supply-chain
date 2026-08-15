@@ -140,6 +140,53 @@ class QualityResponse(BaseModel):
     blocking: list[str]
 
 
+class CreditNotesOut(BaseModel):
+    settled_inr: float = Field(description="Approved. Money Kestrel has agreed to.")
+    undecided_inr: float = Field(description="Pending. Nobody has ruled on these.")
+    refused_inr: float = Field(description="Rejected. Raised against us, not paid.")
+    exposed_inr: float = Field(description="Settled plus undecided — the bill if "
+                                           "every open note is allowed.")
+    raised_inr: float
+    settled_n: int
+    undecided_n: int
+    refused_n: int
+
+
+class CategoryRowOut(BaseModel):
+    category: str
+    settled_inr: float
+    undecided_inr: float
+    refused_inr: float
+    notes_n: int
+
+
+class PendingQueueOut(BaseModel):
+    notes_n: int
+    value_inr: float
+    oldest_date: str | None
+    oldest_days: int | None
+
+
+class MoneyResponse(BaseModel):
+    window: WindowOut
+    region: str | None
+    dispatch_inr: float = Field(
+        description="Recomputed from delivered quantity. Not line_value_inr, which "
+                    "prices what was ordered."
+    )
+    credit_notes: CreditNotesOut
+    settled_pct: float | None
+    exposed_pct: float | None
+    raised_pct: float | None
+    ratio_is_material: bool = Field(
+        description="False when the percentage is too small to carry a decision. "
+                    "The rupee amounts are the usable numbers in that case."
+    )
+    by_category: list[CategoryRowOut]
+    pending_queue: PendingQueueOut
+    notes: list[str]
+
+
 class HealthResponse(BaseModel):
     status: str
     service: str

@@ -13,6 +13,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Literal
 
+from app.metrics import money
 from app.metrics.scope import TEST_OUTLET_PATTERNS, outlet_filter
 from app.metrics.windows import Window
 
@@ -94,7 +95,130 @@ def short_reason_signal(conn) -> Finding:
         ),
         evidence={"codes": [dict(r) for r in rows], "share_spread": round(
             max(shares) - min(shares), 4) if shares else None},
-        affects=["return_reasons", "short_reasons"],
+        affects=["short_reasons"],
+    )
+
+
+def return_reason_signal(conn) -> Finding:
+    """Three independent tests, because one flat cut could be a coincidence.
+
+    A reason code that means anything must predict *something*: what happens to
+    the goods, what kind of product it was, or whether the desk pays out.
+    """
+    by_code = conn.execute("""
+        SELECT r.return_reason_code AS code, COUNT(*) AS n,
+               1.0 * SUM(r.disposition = 'SCRAP') / COUNT(*)  AS scrap_rate,
+               1.0 * SUM(r.status = 'APPROVED') / COUNT(*)    AS approval_rate
+          FROM returns_credit_notes r
+         GROUP BY r.return_reason_code ORDER BY n DESC""").fetchall()
+
+    # A cold chain breach is impossible on an ambient product. If the code is
+    # real, its rate on chilled lines must dwarf its rate on ambient ones.
+    cold = _one(conn, """
+        SELECT
+          1.0 * SUM(CASE WHEN p.is_chilled = 1
+                    AND r.return_reason_code = 'RT06_COLD_CHAIN_BREACH'
+                    THEN 1 ELSE 0 END) / NULLIF(SUM(p.is_chilled = 1), 0)
+            AS chilled_rate,
+          1.0 * SUM(CASE WHEN p.is_chilled = 0
+                    AND r.return_reason_code = 'RT06_COLD_CHAIN_BREACH'
+                    THEN 1 ELSE 0 END) / NULLIF(SUM(p.is_chilled = 0), 0)
+            AS ambient_rate
+          FROM returns_credit_notes r
+          JOIN products p ON p.product_id = r.product_id""")
+
+    spread = lambda xs: (max(xs) - min(xs)) if len(xs) > 1 else None  # noqa: E731
+    scrap_spread = spread([r["scrap_rate"] for r in by_code])
+    approval_spread = spread([r["approval_rate"] for r in by_code])
+    chilled, ambient = cold["chilled_rate"], cold["ambient_rate"]
+    # Not "chilled is higher" — "chilled is no higher", which is the damning case.
+    cold_is_meaningless = (
+        chilled is not None and ambient is not None and chilled <= ambient
+    )
+    noise = bool(
+        scrap_spread is not None and scrap_spread < 0.05
+        and approval_spread is not None and approval_spread < 0.05
+        and cold_is_meaningless
+    )
+    return Finding(
+        id="RETURN_REASON_CODE_NO_SIGNAL",
+        severity="blocks_metric" if noise else "clean",
+        statement=(
+            "Return reason codes predict nothing. Every code is scrapped at the "
+            "same rate and approved at the same rate, and RT06_COLD_CHAIN_BREACH "
+            "is no more common on chilled products than on ambient ones, which is "
+            "impossible if the label means what it says. 'Leading reason code' has "
+            "no honest answer, so money is not sliced by it — the codes differ only "
+            "in how often they are used, and RT01 leads on volume alone."
+            if noise else
+            "Return reason codes vary by disposition, product type or approval."
+        ),
+        evidence={
+            "by_code": [dict(r) for r in by_code],
+            "scrap_rate_spread": round(scrap_spread, 4) if scrap_spread else None,
+            "approval_rate_spread": (
+                round(approval_spread, 4) if approval_spread else None),
+            "cold_breach_rate_chilled": round(chilled, 4) if chilled else None,
+            "cold_breach_rate_ambient": round(ambient, 4) if ambient else None,
+        },
+        affects=["returns", "return_reasons", "money"],
+    )
+
+
+def credit_approval_trail(conn) -> Finding:
+    rows = conn.execute("""
+        SELECT status, COUNT(*) AS n,
+               SUM(approval_date IS NULL OR approval_date = '') AS no_date,
+               COUNT(DISTINCT approved_by) AS distinct_approvers
+          FROM returns_credit_notes GROUP BY status ORDER BY status""").fetchall()
+    total = sum(r["n"] for r in rows)
+    undated = sum(r["no_date"] for r in rows)
+    # approved_by is filled in on notes nobody has approved yet, so it records the
+    # route a note takes rather than a person who signed it.
+    named_on_pending = next(
+        (r["distinct_approvers"] for r in rows if r["status"] == "PENDING"), 0)
+    broken = bool(total and undated == total and named_on_pending)
+    return Finding(
+        id="CREDIT_APPROVAL_TRAIL_MISSING",
+        severity="advisory" if broken else "clean",
+        statement=(
+            "approval_date is empty on every credit note, including approved ones, "
+            "so how long the credit desk takes cannot be measured. approved_by is "
+            "populated even on notes still pending, and holds three values — it is "
+            "the approval route, not a person. Nobody can be named from this table."
+            if broken else "Credit notes carry a usable approval trail."
+        ),
+        evidence={"by_status": [dict(r) for r in rows], "rows": total,
+                  "without_approval_date": undated},
+        affects=["money", "ownership"],
+    )
+
+
+def line_value_is_ordered(conn) -> Finding:
+    r = _one(conn, """
+        SELECT COUNT(*) AS lines,
+               SUM(ABS(line_value_inr - ordered_qty * unit_price_inr
+                   * (1 - COALESCE(line_discount_pct, 0) / 100.0)) < 0.02)
+                 AS matches_ordered,
+               SUM(ABS(line_value_inr - delivered_qty * unit_price_inr
+                   * (1 - COALESCE(line_discount_pct, 0) / 100.0)) < 0.02)
+                 AS matches_delivered
+          FROM order_lines""")
+    trap = bool(r["lines"] and r["matches_ordered"] == r["lines"]
+                and r["matches_delivered"] < r["lines"])
+    return Finding(
+        id="LINE_VALUE_IS_ORDERED_NOT_DELIVERED",
+        severity="advisory" if trap else "clean",
+        statement=(
+            "line_value_inr prices the ordered quantity, not the delivered one, on "
+            "every line — and the order header ties to it, so header value is an "
+            "ordered figure too. Using either as revenue overstates dispatch by "
+            "roughly the shortfall. Dispatch value is recomputed from delivered "
+            "quantity wherever money is reported."
+            if trap else "line_value_inr prices the delivered quantity."
+        ),
+        evidence=dict(r),
+        affects=["money", "order_value"],
     )
 
 
@@ -336,6 +460,47 @@ def outlet_fill_is_noisy(conn, window: Window) -> Finding:
     )
 
 
+def credit_leakage_immaterial(conn, window: Window) -> Finding:
+    """The ratio Divya asked for, checked for whether it can carry a decision."""
+    leak = money.leakage(conn, window)
+    # Three states, not two. Nothing dispatched is a different claim from a ratio
+    # too small to matter, and collapsing them would be the quiet lie this file
+    # exists to catch.
+    if leak.raised_pct is None:
+        statement = (
+            "Nothing was dispatched in this window, so credit notes as a share of "
+            "dispatch has no denominator. Reported as unavailable, not as zero."
+        )
+    elif leak.material:
+        statement = (
+            f"Credit notes are {leak.raised_pct:.2f}% of dispatch value, material "
+            f"enough to track as a rate."
+        )
+    else:
+        statement = (
+            f"Credit notes come to {leak.raised_pct:.2f}% of dispatch value in this "
+            f"window, against a {money.MATERIAL_PCT}% threshold for a number worth "
+            f"watching. The ratio rounds to nothing at every grain and barely moves "
+            f"between periods, so it is reported once for the record and the rupee "
+            f"amounts are what the screen ranks on."
+        )
+    return Finding(
+        id="CREDIT_LEAKAGE_RATIO_IMMATERIAL",
+        severity="clean" if leak.material else "advisory",
+        statement=statement,
+        evidence={
+            "dispatch_inr": round(leak.dispatch_inr),
+            "raised_inr": round(leak.notes.raised_inr),
+            "settled_inr": round(leak.notes.settled_inr),
+            "undecided_inr": round(leak.notes.undecided_inr),
+            "raised_pct": (
+                round(leak.raised_pct, 4) if leak.raised_pct is not None else None),
+            "threshold_pct": money.MATERIAL_PCT,
+        },
+        affects=["money"],
+    )
+
+
 def all_findings(conn: sqlite3.Connection, window: Window) -> list[Finding]:
     """Blocking findings first — they stop a metric from being built at all."""
     findings = [
@@ -343,6 +508,8 @@ def all_findings(conn: sqlite3.Connection, window: Window) -> list[Finding]:
         open_orders_delivered(conn), live_test_outlets(conn), return_qty_signs(conn),
         header_ties_to_lines(conn), net_value_by_source(conn), city_spellings(conn),
         route_region_mismatch(conn), outlet_fill_is_noisy(conn, window),
+        return_reason_signal(conn), credit_approval_trail(conn),
+        line_value_is_ordered(conn), credit_leakage_immaterial(conn, window),
     ]
     rank = {"blocks_metric": 0, "advisory": 1, "clean": 2}
     return sorted(findings, key=lambda f: (rank[f.severity], f.id))

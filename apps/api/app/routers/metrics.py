@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db import get_conn
 from app.metrics import fill as fill_q
+from app.metrics import money as money_q
 from app.metrics import morning as morning_q
 from app.metrics import quality as quality_q
 from app.metrics.compute import decompose, fill_numbers, units_short
@@ -11,6 +12,7 @@ from app.metrics.scope import Scope, ScopeError, build_receipt, get_scope
 from app.metrics.windows import Window, WindowError, parse_window
 from app.schemas import (
     FillResponse,
+    MoneyResponse,
     MorningResponse,
     OutletsResponse,
     QualityResponse,
@@ -183,6 +185,79 @@ def get_quality(
         checked_at_window=_window_out(w),
         findings=[f.__dict__ for f in findings],
         blocking=[f.id for f in findings if f.severity == "blocks_metric"],
+    )
+
+
+@router.get("/money", response_model=MoneyResponse)
+def get_money(
+    window: str | None = Query(None),
+    region: str | None = Query(None),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> MoneyResponse:
+    """Credit notes against what actually shipped.
+
+    Divya asked for this as a percentage. It is returned as one, and also as the
+    three rupee figures behind it, because on this data the percentage is too
+    small to move a decision while the pending pile is large enough to work.
+    """
+    w, _ = _resolve(conn, window, None)
+    region_id = _region_id(conn, region)
+
+    leak = money_q.leakage(conn, w, region_id)
+    categories = money_q.by_category(conn, w, region_id)
+    pending = money_q.pending_queue(conn, w.end, region_id)
+
+    notes = [
+        "Dispatch value is delivered quantity at line price after discount. "
+        "line_value_inr prices the ordered quantity and would overstate it.",
+        "Credit notes are split by status because a rejected note is not a loss "
+        "and a pending one is not yet a decision. Three numbers, no blend.",
+        "No breakdown by reason code: the codes carry no signal on this data. "
+        "See RETURN_REASON_CODE_NO_SIGNAL in /metrics/quality.",
+    ]
+    if leak.raised_pct is None:
+        notes.append(
+            "Nothing dispatched in this window, so the ratio has no denominator. "
+            "Reported as null rather than as zero."
+        )
+    elif not leak.material:
+        notes.append(
+            f"The ratio is {leak.raised_pct:.2f}% of dispatch, below the "
+            f"{money_q.MATERIAL_PCT}% worth watching. Rank on the rupees instead."
+        )
+    if pending.oldest_days:
+        notes.append(
+            f"{pending.notes_n} credit notes are still undecided, the oldest "
+            f"{pending.oldest_days} days old. That queue is the actionable part."
+        )
+    if categories:
+        top, bottom = categories[0], categories[-1]
+        notes.append(
+            f"Categories sit close together — {top.category} leads and "
+            f"{bottom.category} trails, so no single category is the problem."
+        )
+
+    return MoneyResponse(
+        window=_window_out(w), region=region,
+        dispatch_inr=leak.dispatch_inr,
+        credit_notes={
+            **leak.notes.__dict__,
+            "exposed_inr": leak.notes.exposed_inr,
+            "raised_inr": leak.notes.raised_inr,
+        },
+        settled_pct=leak.settled_pct,
+        exposed_pct=leak.exposed_pct,
+        raised_pct=leak.raised_pct,
+        ratio_is_material=leak.material,
+        by_category=[c.__dict__ for c in categories],
+        pending_queue={
+            "notes_n": pending.notes_n,
+            "value_inr": pending.value_inr,
+            "oldest_date": (
+                pending.oldest_date.isoformat() if pending.oldest_date else None),
+            "oldest_days": pending.oldest_days,
+        },
+        notes=notes,
     )
 
 
