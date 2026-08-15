@@ -1,14 +1,13 @@
 import Link from "next/link"
 
+import { Queue } from "@/components/queue"
 import {
   getFill,
   getMoney,
   getMorning,
   getOutlets,
   type ApiResult,
-  type EventItem,
   type Money,
-  type MorningEvent,
   type OutletRow,
 } from "@/lib/api"
 
@@ -23,12 +22,6 @@ const REGIONS = [
   { code: "EST", label: "East" },
   { code: "CEN", label: "Central" },
 ]
-
-const TONE: Record<string, string> = {
-  breach: "text-breach",
-  watch: "text-watch",
-  info: "text-muted-foreground",
-}
 
 const num = (n: number | null | undefined, digits = 0) =>
   n === null || n === undefined
@@ -101,12 +94,6 @@ function Unreachable({
   )
 }
 
-const ITEM_FIELDS = [
-  "warehouse", "late", "drops", "late_pct", "worst_route", "worst_minutes",
-  "ref", "outlet", "max_temp_c", "units", "channel", "product", "shops",
-  "units_short", "band", "days_waiting", "value_inr",
-] as const
-
 /** Rupees, whole. The paisa on a credit note never changes a decision. */
 const inr = (n: number | null | undefined) =>
   n === null || n === undefined
@@ -123,32 +110,6 @@ function creditTiles(c: Money["credit_notes"]) {
     { label: "Refused", value: c.refused_inr, notes: c.refused_n,
       tone: "text-muted-foreground" },
   ]
-}
-
-function EventCard({ event }: { event: MorningEvent }) {
-  return (
-    <li className={`status ${TONE[event.severity] ?? ""}`}>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-        <p className="text-sm font-semibold">{event.headline}</p>
-        <p className="eyebrow shrink-0">{event.owner}</p>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">{event.detail}</p>
-      <ul className="mt-1.5 space-y-0.5">
-        {event.items.slice(0, 4).map((item: EventItem, i) => (
-          <li key={i} className="font-mono text-[11px] text-foreground">
-            {ITEM_FIELDS.filter((f) => item[f] !== undefined && item[f] !== null)
-              .map((f) => `${f}=${item[f]}`)
-              .join("  ")}
-            {item.note ? (
-              <span className="block pl-3 text-muted-foreground">
-                → {item.note}
-              </span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </li>
-  )
 }
 
 function OutletTable({
@@ -317,37 +278,17 @@ export default async function Page({
 
         <section className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <Panel
-              title="Yesterday, as things to do"
-              meta={`${day?.events.length ?? 0} open`}
-            >
-              {day && day.events.length ? (
-                <ul className="space-y-3">
-                  {day.events.map((e) => (
-                    <EventCard key={e.kind} event={e} />
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {day
-                    ? "Nothing broke on this day. An empty queue is a real answer."
-                    : "No data."}
-                </p>
-              )}
-
-              {/* Kept below a rule and labelled: a pile that reads the same
-                  every morning must not be mistaken for fresh damage. */}
-              {day && day.standing.length ? (
-                <div className="mt-4 border-t border-foreground/25 pt-3">
-                  <p className="eyebrow">Already true this morning</p>
-                  <ul className="mt-2 space-y-3">
-                    {day.standing.map((e) => (
-                      <EventCard key={e.kind} event={e} />
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </Panel>
+            {day ? (
+              <Queue
+                asOf={day.as_of}
+                events={day.events}
+                standing={day.standing}
+              />
+            ) : (
+              <Panel title="Yesterday, as things to do">
+                <p className="text-sm text-muted-foreground">No data.</p>
+              </Panel>
+            )}
           </div>
 
           <Panel title="Why two numbers" meta="Cases vs eaches">

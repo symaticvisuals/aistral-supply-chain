@@ -35,7 +35,12 @@ async function get<T>(path: string): Promise<ApiResult<T>> {
   }
 }
 
-export type EventItem = Record<string, string | number | null>
+export type EventItem = Record<string, string | number | boolean | null> & {
+  case_id?: string
+  label?: string
+  done?: boolean
+  note?: string
+}
 
 export type MorningEvent = {
   kind: string
@@ -44,6 +49,7 @@ export type MorningEvent = {
   owner: string
   detail: string
   items: EventItem[]
+  population: number
 }
 
 export type Morning = {
@@ -143,3 +149,33 @@ export const getOutlets = (region?: string, limit = 5) =>
 
 export const getMoney = (region?: string) =>
   get<Money>(`/metrics/money${qs({ region })}`)
+
+export async function markHandled(
+  caseId: string,
+  asOf: string,
+  done: boolean
+): Promise<ApiResult<{ case_id: string; as_of: string; done: boolean }>> {
+  const url = `${BASE}/metrics/morning/handle`
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ case_id: caseId, as_of: asOf, done }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      const detail =
+        body && typeof body === "object" && "detail" in body
+          ? String((body as { detail: unknown }).detail)
+          : `${res.status} ${res.statusText}`
+      return { ok: false, error: detail, url }
+    }
+    return { ok: true, data: (await res.json()) as { case_id: string; as_of: string; done: boolean } }
+  } catch {
+    return {
+      ok: false,
+      error: `Cannot reach the API at ${BASE}. Start it with \`pnpm dev\`.`,
+      url,
+    }
+  }
+}
