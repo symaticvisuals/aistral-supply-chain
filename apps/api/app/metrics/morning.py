@@ -14,7 +14,9 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Literal
 
+from app.metrics import money
 from app.metrics.scope import outlet_filter
+from app.metrics.windows import Window
 
 Severity = Literal["breach", "watch", "info"]
 
@@ -304,6 +306,55 @@ def sku_shortfalls(conn, day, region_id, top: int = 5) -> Event | None:
     )
 
 
+def credit_backlog(conn, day, region_id) -> Event | None:
+    """Credit notes nobody has ruled on. A standing pile, not yesterday's news.
+
+    Every other event here is something that happened on the day. This one is
+    deliberately not: it is the money equivalent of an unread inbox, and a window
+    would hide exactly the notes that have been sitting longest. It is labelled
+    as a backlog so nobody reads it as a fresh failure, and the count raised on
+    the day travels with it so the trend is visible.
+    """
+    queue = money.pending_queue(conn, day, region_id)
+    if not queue.notes_n:
+        return None
+
+    today = Window("day", day.isoformat(), day, day)
+    raised_today = money.credit_notes(conn, today, region_id).undecided_n
+
+    detail = (
+        f"Rs {queue.value_inr:,.0f} raised against us that nobody has approved or "
+        f"rejected. Not a decision either way, so it sits off both the loss and "
+        f"the dispute."
+    )
+    if queue.stale_n:
+        detail += (
+            f" Rs {queue.stale_inr:,.0f} of it across {queue.stale_n} notes has "
+            f"been waiting over a year."
+        )
+    detail += (
+        f" {raised_today} came in on this day."
+        if raised_today
+        else " None came in on this day, so this is entirely carried over."
+    )
+    # Listed by value: the oldest notes here are worth tens of rupees, so an
+    # age-sorted list would look like a work queue without being one. Age rides
+    # on every row instead. approval_date is empty on every row in this table,
+    # so how long the desk has actually held a note cannot be measured — age is
+    # from the return date and no further.
+    return Event(
+        kind="credit_backlog",
+        severity="watch",
+        headline=(
+            f"{queue.notes_n} credit notes undecided, oldest "
+            f"{queue.oldest_days} days"
+        ),
+        owner="Credit desk",
+        detail=detail,
+        items=money.pending_to_work(conn, day, region_id),
+    )
+
+
 def day_summary(conn, day, region_id) -> dict:
     rc, args = _args(day, region_id)
     orders = conn.execute(
@@ -350,24 +401,35 @@ _RANK = {"breach": 0, "watch": 1, "info": 2}
 
 
 def morning(conn, day: dt.date, region_id: int | None = None) -> dict:
+    """Two lists, kept apart on purpose.
+
+    `events` is what happened on this day, and an empty one is a real answer —
+    a quiet day must not invent work. `standing` is what was already true when
+    the day started. Mixing them would let a backlog that reads the same every
+    morning sit among yesterday's breaches until nobody sees either.
+    """
     events = [
         cold_chain(conn, day, region_id),
         late_deliveries(conn, day, region_id),
         *refusals(conn, day, region_id),
         sku_shortfalls(conn, day, region_id),
     ]
-    live = sorted(
-        (e for e in events if e is not None), key=lambda e: _RANK[e.severity]
+    standing = [credit_backlog(conn, day, region_id)]
+    by_severity = lambda es: sorted(  # noqa: E731
+        (e for e in es if e is not None), key=lambda e: _RANK[e.severity]
     )
     return {
         "as_of": day.isoformat(),
         "is_latest": day == latest_day(conn),
         "day": day_summary(conn, day, region_id),
-        "events": [e.__dict__ for e in live],
+        "events": [e.__dict__ for e in by_severity(events)],
+        "standing": [e.__dict__ for e in by_severity(standing)],
         "notes": [
             "Events, not rates. At ~150 orders a day an outlet places about one, "
             "so a per-shop daily fill rate is one order's luck.",
             "'Late' has two sources that disagree on a third of deliveries. Both "
             "counts are given; neither is presented as the answer.",
+            "Standing items were already true this morning. They are listed apart "
+            "from the day so a carried-over pile is never read as fresh damage.",
         ],
     }

@@ -91,12 +91,20 @@ class CategoryRow:
     notes_n: int
 
 
+# A credit note still undecided after a year is not a queue, it is a process
+# that stopped. Tracked separately so the age of the pile is a number, not an
+# anecdote about its single oldest row.
+STALE_DAYS = 365
+
+
 @dataclass(frozen=True)
 class PendingQueue:
     notes_n: int
     value_inr: float
     oldest_date: date | None
     oldest_days: int | None
+    stale_n: int
+    stale_inr: float
 
 
 def _region_clause(region_id: int | None, args: list[object]) -> str:
@@ -232,12 +240,21 @@ def pending_queue(
     of a problem than one raised yesterday, and a window would hide exactly the
     ones that have been sitting longest.
     """
-    args: list[object] = [as_of.isoformat()]
+    # Order matters: the two stale expressions come before the date bound.
+    args: list[object] = [
+        as_of.isoformat(), STALE_DAYS,   # stale_n
+        as_of.isoformat(), STALE_DAYS,   # stale_v
+        as_of.isoformat(),               # return_date <= ?
+    ]
     clause = _region_clause(region_id, args)
     row = conn.execute(
         f"""SELECT COUNT(*) AS n,
               COALESCE(SUM(r.credit_note_value_inr), 0) AS v,
-              MIN(r.return_date) AS oldest
+              MIN(r.return_date) AS oldest,
+              COALESCE(SUM(julianday(?) - julianday(r.return_date) > ?), 0)
+                AS stale_n,
+              COALESCE(SUM(CASE WHEN julianday(?) - julianday(r.return_date) > ?
+                           THEN r.credit_note_value_inr END), 0) AS stale_v
             FROM returns_credit_notes r
             JOIN outlets ot ON ot.outlet_id = r.outlet_id
            WHERE r.status IN {_UNDECIDED_IN}
@@ -252,4 +269,42 @@ def pending_queue(
         value_inr=row["v"],
         oldest_date=oldest,
         oldest_days=(as_of - oldest).days if oldest else None,
+        stale_n=row["stale_n"],
+        stale_inr=row["stale_v"],
     )
+
+
+def pending_to_work(
+    conn: sqlite3.Connection,
+    as_of: date,
+    region_id: int | None = None,
+    limit: int = 5,
+) -> list[dict]:
+    """The undecided notes worth the most, each carrying how long it has waited.
+
+    Ordered by value, not by age — the two disagree completely here. The oldest
+    notes are worth tens of rupees while the largest have waited months, so an
+    age-sorted list reads like a work queue and is not one. Age stays visible on
+    every row, and how much of the pile has gone stale is on the queue summary.
+    """
+    args: list[object] = [as_of.isoformat()]
+    clause = _region_clause(region_id, args)
+    args.append(limit)
+    rows = conn.execute(
+        f"""SELECT r.credit_note_number AS ref, ot.outlet_name AS outlet,
+                   r.return_date, r.credit_note_value_inr AS value_inr
+              FROM returns_credit_notes r
+              JOIN outlets ot ON ot.outlet_id = r.outlet_id
+             WHERE r.status IN {_UNDECIDED_IN}
+               AND r.return_date <= ? {clause}
+               AND {outlet_filter()}
+             ORDER BY r.credit_note_value_inr DESC LIMIT ?""",
+        args,
+    ).fetchall()
+    return [
+        {
+            **dict(r),
+            "days_waiting": (as_of - date.fromisoformat(r["return_date"][:10])).days,
+        }
+        for r in rows
+    ]

@@ -165,6 +165,8 @@ class PendingQueueOut(BaseModel):
     value_inr: float
     oldest_date: str | None
     oldest_days: int | None
+    stale_n: int = Field(description="Undecided for more than a year.")
+    stale_inr: float
 
 
 class MoneyResponse(BaseModel):
@@ -207,5 +209,11 @@ class MorningResponse(BaseModel):
     is_latest: bool
     region: str | None
     day: dict
-    events: list[EventOut]
+    events: list[EventOut] = Field(
+        description="What happened on this day. Empty is a valid answer."
+    )
+    standing: list[EventOut] = Field(
+        description="Already true before the day started — a backlog, not fresh "
+                    "damage. Kept apart so the two are never confused."
+    )
     notes: list[str]

@@ -256,6 +256,8 @@ def get_money(
             "oldest_date": (
                 pending.oldest_date.isoformat() if pending.oldest_date else None),
             "oldest_days": pending.oldest_days,
+            "stale_n": pending.stale_n,
+            "stale_inr": pending.stale_inr,
         },
         notes=notes,
     )
