@@ -21,7 +21,7 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     db_path = path or settings.db_path
     if not db_path.exists():
         raise DatabaseMissing(
-            f"No database at {db_path}. Put the assignment pack next to the repo "
+            f"No database at {db_path}. Unzip the assignment pack inside the repo "
             f"or set KESTREL_DB_PATH in apps/api/.env"
         )
     # check_same_thread=False because FastAPI resolves a sync dependency and runs

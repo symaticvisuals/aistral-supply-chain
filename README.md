@@ -6,11 +6,16 @@ One morning screen for Kestrel Provisions: which shops did not get what they ord
 
 Needs Node 20+, [pnpm](https://pnpm.io) 10, Python 3.12+, [uv](https://docs.astral.sh/uv/).
 
-The SQLite file is **not** in git. Put the assignment pack next to this repo (or set the path):
+The SQLite file is **not** in git. Unzip the assignment pack **inside this repo**,
+so the database sits here:
 
 ```text
-FDE_Assignment_Pack_Kestrel_v1.1/data/kestrel_ops.db
+<repo root>/FDE_Assignment_Pack_Kestrel_v1.1/data/kestrel_ops.db
 ```
+
+Anywhere else works too — set `KESTREL_DB_PATH` in `apps/api/.env` to an absolute
+path. `http://127.0.0.1:8000/health` tells you which path it tried and whether it
+opened.
 
 ```bash
 pnpm install
