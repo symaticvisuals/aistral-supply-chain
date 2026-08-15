@@ -40,12 +40,18 @@ pnpm typecheck
 Optional later (not required to open the screen):
 
 ```bash
+# competitor prices — serve the site, then scrape it
+cd FDE_Assignment_Pack_Kestrel_v1.1/bazaarpulse_site && python3 -m http.server 8080
+cd apps/api && uv run python -m app.bazaarpulse            # ~21 min, obeys robots.txt
+cd apps/api && uv run python -m app.bazaarpulse --listings-only   # ~70s
+
 # carrier bills
 python3 FDE_Assignment_Pack_Kestrel_v1.1/partner_api/server.py
-
-# competitor site
-cd FDE_Assignment_Pack_Kestrel_v1.1/bazaarpulse_site && python3 -m http.server 8080
 ```
+
+The scrape writes `apps/api/data/bazaarpulse.db` and is never run at request
+time. Prices are the one number here that comes from someone else's web server,
+and the screen has to open whether or not that server is up.
 
 Do not commit `kestrel_ops.db` or the assignment pack.
 

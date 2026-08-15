@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     as_of_date: str | None = None
     # Handled ticks. Separate from the pack, which we must never write to.
     handled_db_path: str = "data/handled.db"
+    # Competitor prices. Written by the scraper, read by the API — never
+    # scraped at request time, so the screen does not depend on a web server.
+    bazaarpulse_db_path: str = "data/bazaarpulse.db"
+    bazaarpulse_base_url: str = "http://localhost:8080"
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -34,6 +38,11 @@ class Settings(BaseSettings):
     @property
     def handled_path(self) -> Path:
         raw = Path(self.handled_db_path).expanduser()
+        return raw if raw.is_absolute() else (API_DIR / raw).resolve()
+
+    @property
+    def bazaarpulse_path(self) -> Path:
+        raw = Path(self.bazaarpulse_db_path).expanduser()
         return raw if raw.is_absolute() else (API_DIR / raw).resolve()
 
 

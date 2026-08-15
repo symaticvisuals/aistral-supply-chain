@@ -57,4 +57,36 @@ it can be recognised, never used: it silently discards every EACH line.
   `region` means the outlet's own region.
 - **No leading short-reason.** The reason codes are uniform noise.
 
-`OPTIONS`, freight and price are not here. Freight is the next slice.
+## The competitor scrape
+
+Prices come from BazaarPulse, which is a web server, so they are fetched by a
+separate command and written to `data/bazaarpulse.db`. The screen reads the
+snapshot and says how old it is. Scraping at request time would mean a morning
+where the control tower does not open because someone else's site is down.
+
+```bash
+cd FDE_Assignment_Pack_Kestrel_v1.1/bazaarpulse_site && python3 -m http.server 8080
+cd apps/api && uv run python -m app.bazaarpulse
+```
+
+`--listings-only` skips the per-listing price history (70s instead of 21
+minutes). `--crawl-delay` overrides the 1s the site asks for; whatever was used
+is written into the run row, so a scrape that ignored the site's terms cannot be
+mistaken afterwards for one that did not.
+
+Four things about that site are worth knowing, and the scraper reports all four
+as findings rather than handling them quietly:
+
+- **Every city prices differently.** Bengaluru puts the number in
+  `data-price-paise` and shows "Price on card" as text — 292 listings a
+  text-only parser loses without erroring.
+- **Bengaluru and Chennai pager links lie.** They point at `index.html?p=13`;
+  the server ignores the query string and returns page 1. The real page is
+  `index_p13.html`. So no page is trusted: each states which page it is, and one
+  that disagrees with the request is discarded. 32 pages were discarded.
+- **8 listings appear on two pages.** Counting cards gives 1,145; counting
+  listings gives 1,137.
+- **`/internal/margin-sheet.html` exists and robots.txt disallows it.** It is
+  the most commercially interesting page on the site and it was not fetched.
+
+`OPTIONS` and freight are not here. Freight is the next slice.
