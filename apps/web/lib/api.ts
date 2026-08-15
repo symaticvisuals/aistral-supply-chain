@@ -164,6 +164,17 @@ export type Expiry = {
   notes: string[]
 }
 
+export type Quality = {
+  findings: {
+    id: string
+    severity: "blocks_metric" | "advisory" | "clean"
+    statement: string
+    affects: string[]
+    evidence: Record<string, unknown>
+  }[]
+  blocking: string[]
+}
+
 const qs = (params: Record<string, string | undefined>) => {
   const q = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) if (v) q.set(k, v)
@@ -184,6 +195,8 @@ export const getOutlets = (region?: string, limit = 5) =>
 
 export const getMoney = (region?: string) =>
   get<Money>(`/metrics/money${qs({ region })}`)
+
+export const getQuality = () => get<Quality>("/metrics/quality")
 
 export const getExpiry = (region?: string, asOf?: string, limit = 6) =>
   get<Expiry>(

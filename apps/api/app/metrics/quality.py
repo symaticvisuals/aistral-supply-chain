@@ -670,7 +670,229 @@ def credit_leakage_immaterial(conn, window: Window) -> Finding:
     )
 
 
-def all_findings(conn: sqlite3.Connection, window: Window) -> list[Finding]:
+def prices_never_scraped() -> Finding:
+    return Finding(
+        id="PRICES_NEVER_SCRAPED",
+        severity="advisory",
+        statement=(
+            "No competitor prices have been collected, so the price questions "
+            "are unanswered rather than answered badly. Run "
+            "`uv run python -m app.bazaarpulse` against the BazaarPulse site."
+        ),
+        evidence={},
+        affects=["price"],
+    )
+
+
+def shelf_price_has_no_memory(book) -> Finding:
+    """Can "a shop cut its price last week" ever be an alert?
+
+    Only if this week's price tells you anything about next week's. Pool every
+    consecutive pair as a deviation from its own listing's mean and the
+    correlation is not merely weak, it is the value pure noise produces: with
+    six observations, subtracting the sample mean drags lag-1 correlation to
+    about -1/(n-1) = -0.2 all on its own. Add a drift of nothing at all and the
+    series is a wobble around a fixed number.
+
+    This is the finding that blocks a price-movement event in the morning queue.
+    Without it, twelve listings look like twelve stories.
+    """
+    pairs_x: list[float] = []
+    pairs_y: list[float] = []
+    swings: list[float] = []
+    drifts: list[float] = []
+    for series in book.series:
+        if len(series) < 3:
+            continue
+        mean = sum(series) / len(series)
+        if mean:
+            swings.append((max(series) - min(series)) / mean)
+        for i in range(1, len(series)):
+            pairs_x.append(series[i - 1] - mean)
+            pairs_y.append(series[i] - mean)
+        if len(series) >= 6 and mean:
+            half = len(series) // 2
+            drifts.append(
+                (sum(series[half:]) / len(series[half:])
+                 - sum(series[:half]) / half) / mean
+            )
+
+    correlation = None
+    if len(pairs_x) > 2:
+        n = len(pairs_x)
+        mx, my = sum(pairs_x) / n, sum(pairs_y) / n
+        cov = sum((a - mx) * (b - my) for a, b in zip(pairs_x, pairs_y,
+                                                      strict=True)) / n
+        sx = (sum((a - mx) ** 2 for a in pairs_x) / n) ** 0.5
+        sy = (sum((b - my) ** 2 for b in pairs_y) / n) ** 0.5
+        correlation = cov / (sx * sy) if sx and sy else None
+
+    lengths = [len(s) for s in book.series if len(s) >= 3]
+    typical = min(lengths) if lengths else 0
+    expected_bias = -1 / (typical - 1) if typical > 1 else None
+    memoryless = (
+        correlation is not None and expected_bias is not None
+        and abs(correlation - expected_bias) < 0.15
+    )
+    swing = sorted(swings)[len(swings) // 2] if swings else None
+    drift = sum(drifts) / len(drifts) if drifts else None
+
+    if correlation is None:
+        return Finding(
+            id="SHELF_PRICE_HAS_NO_MEMORY",
+            severity="advisory",
+            statement=(
+                "No listing carries more than one observation, so whether "
+                "shelf prices move cannot be tested. Run the scrape without "
+                "--listings-only to collect the history."
+            ),
+            evidence={"series": len(book.series)},
+            affects=["price", "morning"],
+        )
+
+    return Finding(
+        id="SHELF_PRICE_HAS_NO_MEMORY",
+        severity="blocks_metric" if memoryless else "advisory",
+        statement=(
+            f"Shelf prices wobble and go nowhere. Lag-1 correlation is "
+            f"{correlation:+.3f} across {len(pairs_x):,} consecutive pairs, "
+            f"which is what {typical} observations of pure noise produce on "
+            f"their own ({expected_bias:+.2f}); the median listing swings "
+            f"{100 * (swing or 0):.1f}% between its high and low and drifts "
+            f"{100 * (drift or 0):+.2f}% over the window. No price-movement "
+            f"alert can be built on this — 'cut its price this week' is last "
+            f"week's dice."
+            if memoryless else
+            f"Shelf prices carry some memory: lag-1 correlation "
+            f"{correlation:+.3f} against {expected_bias:+.2f} expected from "
+            f"noise alone. A movement metric may be worth building."
+        ),
+        evidence={
+            "lag1_correlation": round(correlation, 4)
+            if correlation is not None else None,
+            "correlation_expected_from_noise": round(expected_bias, 3)
+            if expected_bias is not None else None,
+            "pairs": len(pairs_x),
+            "median_peak_to_trough_pct": round(100 * swing, 2)
+            if swing is not None else None,
+            "mean_drift_pct": round(100 * drift, 3) if drift is not None else None,
+            "series": len(book.series),
+        },
+        affects=["price", "morning"],
+    )
+
+
+def competitor_gap_flat_by_city(book) -> Finding:
+    """Divya asked for the gap "by city". This is the answer and the refusal."""
+    by_city: dict[str, list[float]] = {}
+    for shelf in book.shelves:
+        if shelf.in_stock and shelf.mrp_inr:
+            by_city.setdefault(shelf.city, []).append(shelf.price_inr / shelf.mrp_inr)
+    medians = {
+        city: round(sorted(ratios)[len(ratios) // 2], 4)
+        for city, ratios in sorted(by_city.items()) if ratios
+    }
+    spread = (max(medians.values()) - min(medians.values())) if medians else 0.0
+    flat = spread < 0.05
+
+    return Finding(
+        id="COMPETITOR_GAP_FLAT_BY_CITY",
+        severity="advisory",
+        statement=(
+            f"Discount off MRP is {100 * spread:.1f} points apart across "
+            f"{len(medians)} cities, so ranking cities on price gap is ranking "
+            f"noise. The gap is reported per SKU where a decision needs it, "
+            f"never as a league table of cities."
+            if flat else
+            f"Discount off MRP varies {100 * spread:.1f} points across "
+            f"{len(medians)} cities, which is wide enough to rank."
+        ),
+        evidence={"median_price_over_mrp_by_city": medians,
+                  "spread_pct_points": round(100 * spread, 2)},
+        affects=["price"],
+    )
+
+
+def site_mrp_mirrors_master(book) -> Finding:
+    """Does an outside source tell us anything about our own product master?"""
+    total = book.mrp_agree + book.mrp_conflict
+    mirrors = book.mrp_conflict == 0 and total > 0
+    return Finding(
+        id="SITE_MRP_MIRRORS_MASTER",
+        severity="advisory",
+        statement=(
+            f"The MRP published on the tracker equals ours on all {total:,} "
+            f"listings. That makes it a reliable key for telling apart SKUs our "
+            f"own master gives the same name — but it is our number coming back "
+            f"to us, so it cannot audit the master and is not treated as if it "
+            f"could."
+            if mirrors else
+            f"The tracker's MRP differs from ours on {book.mrp_conflict:,} of "
+            f"{total:,} listings. One of the two is wrong and it is worth "
+            f"knowing which."
+        ),
+        evidence={"agree": book.mrp_agree, "differ": book.mrp_conflict},
+        affects=["price"],
+    )
+
+
+# The cities the tracker covers, spelled as our own outlet table spells them.
+# Aliases are the ones already known to CITY_ALIASES — the free-text city column
+# is not a cosmetic problem once prices have to join through it.
+_SCRAPED_CITY_NAMES = (
+    "MUMBAI", "BOMBAY", "DELHI", "NEW DELHI", "GURGAON", "GURUGRAM", "NOIDA",
+    "BENGALURU", "BANGALORE", "CHENNAI", "MADRAS",
+)
+
+
+def price_coverage(conn, window: Window) -> Finding:
+    """How much of Kestrel any price sentence can possibly be about."""
+    placeholders = ",".join("?" * len(_SCRAPED_CITY_NAMES))
+    outlets = _one(conn, f"""
+        SELECT COUNT(*) AS active,
+               SUM(CASE WHEN UPPER(TRIM(city)) IN ({placeholders})
+                        THEN 1 ELSE 0 END) AS inside
+          FROM outlets WHERE status = 'ACTIVE'""", _SCRAPED_CITY_NAMES)
+    value = _one(conn, f"""
+        SELECT SUM(ol.delivered_qty * ol.unit_price_inr) AS total,
+               SUM(CASE WHEN UPPER(TRIM(o2.city)) IN ({placeholders})
+                        THEN ol.delivered_qty * ol.unit_price_inr ELSE 0 END)
+                 AS inside
+          FROM order_lines ol
+          JOIN orders o ON o.order_id = ol.order_id
+          JOIN outlets o2 ON o2.outlet_id = o.outlet_id
+         WHERE o.order_date BETWEEN ? AND ?""",
+        (*_SCRAPED_CITY_NAMES, window.start.isoformat(), window.end.isoformat()))
+    dcs = _one(conn, f"""
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN UPPER(TRIM(city)) IN ({placeholders})
+                        THEN 1 ELSE 0 END) AS inside
+          FROM warehouses""", _SCRAPED_CITY_NAMES)
+
+    share = (100.0 * value["inside"] / value["total"]) if value["total"] else 0.0
+    return Finding(
+        id="PRICE_COVERS_PART_OF_THE_BUSINESS",
+        severity="advisory",
+        statement=(
+            f"The tracker covers four cities holding {outlets['inside']} of "
+            f"{outlets['active']} active outlets and {share:.1f}% of dispatch "
+            f"in {window.label}, and {dcs['inside']} of {dcs['total']} "
+            f"warehouses. Every price number carries that ceiling; none of them "
+            f"speaks for the other two thirds."
+        ),
+        evidence={
+            "outlets_inside": outlets["inside"], "outlets_active": outlets["active"],
+            "dispatch_share_pct": round(share, 2),
+            "dispatch_inside_inr": round(value["inside"] or 0.0),
+            "warehouses_inside": dcs["inside"], "warehouses_total": dcs["total"],
+        },
+        affects=["price"],
+    )
+
+
+def all_findings(
+    conn: sqlite3.Connection, window: Window, book=None
+) -> list[Finding]:
     """Blocking findings first — they stop a metric from being built at all."""
     findings = [
         otif_in_full(conn), short_reason_signal(conn), order_status_meaning(conn),
@@ -682,5 +904,16 @@ def all_findings(conn: sqlite3.Connection, window: Window) -> list[Finding]:
         excursion_rate_is_flat(conn),
         line_value_is_ordered(conn), credit_leakage_immaterial(conn, window),
     ]
+    # Prices come from someone else's web server, so their absence is a state
+    # the screen has to be able to describe rather than one it can assume away.
+    if book is None:
+        findings.append(prices_never_scraped())
+    else:
+        findings += [
+            shelf_price_has_no_memory(book),
+            competitor_gap_flat_by_city(book),
+            site_mrp_mirrors_master(book),
+            price_coverage(conn, window),
+        ]
     rank = {"blocks_metric": 0, "advisory": 1, "clean": 2}
     return sorted(findings, key=lambda f: (rank[f.severity], f.id))

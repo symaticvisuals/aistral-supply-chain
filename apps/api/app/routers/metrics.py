@@ -9,6 +9,7 @@ from app.metrics import expiry as expiry_q
 from app.metrics import fill as fill_q
 from app.metrics import money as money_q
 from app.metrics import morning as morning_q
+from app.metrics import prices as prices_q
 from app.metrics import quality as quality_q
 from app.metrics.compute import decompose, fill_numbers, units_short
 from app.metrics.scope import Scope, ScopeError, build_receipt, get_scope
@@ -186,7 +187,7 @@ def get_quality(
     the condition that produced it.
     """
     w, _ = _resolve(conn, window, None)
-    findings = quality_q.all_findings(conn, w)
+    findings = quality_q.all_findings(conn, w, prices_q.load(conn))
     return QualityResponse(
         checked_at_window=_window_out(w),
         findings=[f.__dict__ for f in findings],
