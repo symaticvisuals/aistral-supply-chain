@@ -222,6 +222,8 @@ class HandleOut(BaseModel):
 class MorningResponse(BaseModel):
     as_of: str
     is_latest: bool
+    earliest: str
+    latest: str
     region: str | None
     day: dict
     events: list[EventOut] = Field(

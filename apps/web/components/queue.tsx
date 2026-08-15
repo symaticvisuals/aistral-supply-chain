@@ -39,14 +39,16 @@ function Category({
       <details>
         <summary className="flex cursor-pointer list-none items-baseline justify-between gap-3 [&::-webkit-details-marker]:hidden">
           <span className="flex min-w-0 items-baseline gap-3">
-            <span className="figure w-10 shrink-0 text-2xl tabular-nums">
+            <span className="w-8 shrink-0 text-xl font-semibold tabular-nums">
               {num(remaining)}
             </span>
-            <span className="text-sm font-semibold">{title}</span>
+            <span className="font-semibold">{title}</span>
           </span>
-          <span className="eyebrow shrink-0">{event.owner}</span>
+          <span className="shrink-0 text-sm text-muted-foreground">
+            {event.owner}
+          </span>
         </summary>
-        <ul className="mt-2 space-y-1.5">
+        <ul className="mt-3 space-y-2.5">
           {event.items.map((item) => {
             const id = String(item.case_id ?? "")
             const ticked = Boolean(item.done)
@@ -80,7 +82,7 @@ function Category({
                     />
                     <button
                       type="submit"
-                      className="border border-border px-1.5 py-0.5 font-mono text-[11px] hover:bg-accent"
+                      className="border border-border px-2 py-0.5 text-sm hover:bg-accent"
                     >
                       {ticked ? "Undo" : "Done"}
                     </button>
@@ -90,7 +92,7 @@ function Category({
             )
           })}
           {more ? (
-            <li className="text-xs text-muted-foreground">
+            <li className="text-sm text-muted-foreground">
               {num(event.population)} in all. These are the ones to work first.
             </li>
           ) : null}
@@ -115,13 +117,13 @@ export function Queue({
 
   return (
     <section className="flex h-full flex-col border border-border bg-card">
-      <header className="flex items-baseline justify-between gap-3 border-b border-border px-4 py-2.5">
-        <h2 className="text-[0.95rem] font-semibold tracking-tight">
-          Yesterday, as things to do
+      <header className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
+        <h2 className="text-lg font-semibold tracking-tight">
+          Yesterday, to do
         </h2>
-        <p className="eyebrow shrink-0">{openCount} open</p>
+        <p className="text-sm text-muted-foreground">{openCount} open</p>
       </header>
-      <div className="min-w-0 flex-1 px-4 py-3">
+      <div className="min-w-0 flex-1 px-5 py-4">
         {events.length ? (
           <ul className="space-y-3">
             {events.map((event) => (
@@ -129,15 +131,15 @@ export function Queue({
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            Nothing broke on this day. An empty queue is a real answer.
+          <p className="text-muted-foreground">
+            Nothing broke on this day. An empty list is a real answer.
           </p>
         )}
 
         {standing.length ? (
-          <div className="mt-4 border-t border-foreground/25 pt-3">
-            <p className="eyebrow">Already true this morning</p>
-            <ul className="mt-2 space-y-3">
+          <div className="mt-6 border-t border-border pt-4">
+            <p className="text-sm text-muted-foreground">Still open from before today</p>
+            <ul className="mt-3 space-y-3">
               {standing.map((event) => (
                 <Category key={event.kind} event={event} day={asOf} />
               ))}

@@ -55,6 +55,8 @@ export type MorningEvent = {
 export type Morning = {
   as_of: string
   is_latest: boolean
+  earliest: string
+  latest: string
   region: string | null
   day: {
     orders: number

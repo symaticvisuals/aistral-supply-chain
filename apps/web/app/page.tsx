@@ -1,5 +1,6 @@
 import Link from "next/link"
 
+import { DayPicker } from "@/components/day-picker"
 import { Queue } from "@/components/queue"
 import {
   getFill,
@@ -56,11 +57,11 @@ function Panel({
 }) {
   return (
     <section className="flex h-full flex-col border border-border bg-card">
-      <header className="flex items-baseline justify-between gap-3 border-b border-border px-4 py-2.5">
-        <h2 className="text-[0.95rem] font-semibold tracking-tight">{title}</h2>
+      <header className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
+        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
         {meta ? <p className="eyebrow shrink-0">{meta}</p> : null}
       </header>
-      <div className="min-w-0 flex-1 px-4 py-3">{children}</div>
+      <div className="min-w-0 flex-1 px-5 py-4">{children}</div>
     </section>
   )
 }
@@ -74,21 +75,20 @@ function Unreachable({
   return (
     <div className="border border-breach bg-card p-5">
       <p className="eyebrow text-breach">
-        {failures.length} of 4 API calls failed
+        {failures.length} of 4 numbers did not load
       </p>
       <ul className="mt-1.5 space-y-1">
         {failures.map((f) => (
           <li key={f.url} className="text-sm">
             {f.error}
-            <span className="block font-mono text-[11px] text-muted-foreground">
+            <span className="mt-0.5 block text-xs text-muted-foreground">
               {f.url}
             </span>
           </li>
         ))}
       </ul>
-      <p className="mt-2.5 text-xs text-muted-foreground">
-        Panels below still show whatever did load. If the API is running, restart
-        it — <code className="font-mono">pnpm dev</code> — and reload.
+      <p className="mt-2.5 text-sm text-muted-foreground">
+        The rest of the page still shows whatever did load.
       </p>
     </div>
   )
@@ -120,27 +120,27 @@ function OutletTable({
   metric: "fill" | "short"
 }) {
   return (
-    <table className="w-full border-collapse font-mono text-[11px] tabular-nums">
+    <table className="w-full border-collapse text-[15px] tabular-nums">
       <thead>
-        <tr className="border-b border-foreground">
-          <th className="pb-1 text-left font-medium text-muted-foreground">
-            Outlet
+        <tr className="border-b border-border">
+          <th className="pb-2 text-left text-sm font-semibold text-muted-foreground">
+            Shop
           </th>
-          <th className="pb-1 text-right font-medium text-muted-foreground">
+          <th className="pb-2 text-right text-sm font-semibold text-muted-foreground">
             Orders
           </th>
-          <th className="pb-1 text-right font-medium text-muted-foreground">
-            {metric === "fill" ? "Case fill" : "Units short"}
+          <th className="pb-2 text-right text-sm font-semibold text-muted-foreground">
+            {metric === "fill" ? "Case fill" : "Pieces short"}
           </th>
         </tr>
       </thead>
       <tbody>
         {rows.map((r) => (
-          <tr key={r.outlet_id} className="border-b border-border/50">
-            <td className="py-1.5">{r.outlet_name}</td>
-            <td className="py-1.5 text-right text-muted-foreground">{r.orders}</td>
+          <tr key={r.outlet_id} className="border-b border-border/40">
+            <td className="py-2.5">{r.outlet_name}</td>
+            <td className="py-2.5 text-right text-muted-foreground">{r.orders}</td>
             <td
-              className={`py-1.5 text-right ${
+              className={`py-2.5 text-right font-semibold ${
                 metric === "fill" ? "text-watch" : "text-breach"
               }`}
             >
@@ -178,241 +178,207 @@ export default async function Page({
 
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-10 border-b-2 border-foreground bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-6 gap-y-2 px-6 py-2.5">
-          <span className="figure text-2xl uppercase">Kestrel control tower</span>
+      <header className="sticky top-0 z-10 border-b border-foreground bg-background/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-3 px-6 py-3.5">
+          <span className="text-xl font-semibold tracking-tight">Kestrel</span>
           {day ? (
-            <span className="flex items-center gap-1.5">
-              <Link
-                href={href(region, shiftDay(day.as_of, -1))}
-                className="eyebrow border border-border px-1.5 py-0.5 hover:bg-accent"
-              >
-                ‹
-              </Link>
-              <span className="eyebrow">
-                {day.as_of}
-                {day.is_latest ? " · latest" : ""}
-              </span>
-              <Link
-                href={href(region, shiftDay(day.as_of, 1))}
-                className="eyebrow border border-border px-1.5 py-0.5 hover:bg-accent"
-              >
-                ›
-              </Link>
+            <span className="flex items-center gap-2">
+              {day.as_of > day.earliest ? (
+                <Link
+                  href={href(region, shiftDay(day.as_of, -1))}
+                  className="border border-border px-2 py-0.5 text-sm hover:bg-accent"
+                  aria-label="Previous day"
+                >
+                  ‹
+                </Link>
+              ) : (
+                <span className="border border-transparent px-2 py-0.5 text-sm text-muted-foreground/40">
+                  ‹
+                </span>
+              )}
+              <DayPicker
+                asOf={day.as_of}
+                earliest={day.earliest}
+                latest={day.latest}
+                region={region}
+              />
+              {day.as_of < day.latest ? (
+                <Link
+                  href={href(region, shiftDay(day.as_of, 1))}
+                  className="border border-border px-2 py-0.5 text-sm hover:bg-accent"
+                  aria-label="Next day"
+                >
+                  ›
+                </Link>
+              ) : (
+                <span className="border border-transparent px-2 py-0.5 text-sm text-muted-foreground/40">
+                  ›
+                </span>
+              )}
             </span>
           ) : null}
-          <div className="ml-auto flex flex-wrap items-center gap-1.5">
-            <span className="eyebrow mr-1">Region</span>
+          <nav className="ml-auto flex flex-wrap items-center gap-1" aria-label="Region">
             {REGIONS.map((r) => {
               const active = (r.code ?? undefined) === region
               return (
                 <Link
                   key={r.label}
                   href={href(r.code, asOf)}
-                  className={`border px-2 py-1 font-mono text-[11px] transition-colors ${
+                  className={`px-2.5 py-1 text-sm transition-colors ${
                     active
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-foreground hover:bg-foreground hover:text-background"
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-accent"
                   }`}
                 >
                   {r.label}
                 </Link>
               )
             })}
-          </div>
+          </nav>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1400px] space-y-4 px-6 py-5">
+      <main className="mx-auto max-w-[1100px] space-y-8 px-6 py-8">
         {failures.length ? <Unreachable failures={failures} /> : null}
 
-        <section className="grid gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
-          <div className="bg-card p-4">
-            <p className="eyebrow">Case fill · {q?.window.label ?? "—"}</p>
-            <p className="figure mt-2 text-4xl text-watch">
+        <section className="grid gap-6 border-b border-border pb-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <p className="eyebrow">Case fill</p>
+            <p className="figure mt-1 text-[2.4rem] text-watch">
               {num(q?.fill.case_pct, 1)}%
             </p>
-            <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-              Divya · commits in cases
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              each fill {num(q?.fill.each_pct, 1)}% on the same rows
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {q?.window.label ?? "This quarter"}
             </p>
           </div>
-          <div className="bg-card p-4">
-            <p className="eyebrow">Units short · quarter</p>
-            <p className="figure mt-2 text-4xl text-breach">
+          <div>
+            <p className="eyebrow">Pieces short</p>
+            <p className="figure mt-1 text-[2.4rem] text-breach">
               {num(q?.units_short.shipped_short)}
             </p>
-            <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-              Rakesh · fined in eaches
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              every unit is invoiced against
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              Same shortfall, counted piece by piece
             </p>
           </div>
-          <div className="bg-card p-4">
-            <p className="eyebrow">Yesterday · {day?.as_of ?? "—"}</p>
-            <p className="figure mt-2 text-4xl">{num(day?.day.orders)}</p>
-            <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-              orders · {num(day?.day.units_short)} units short
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {num(day?.day.deliveries)} drops
+          <div>
+            <p className="eyebrow">Yesterday</p>
+            <p className="figure mt-1 text-[2.4rem]">{num(day?.day.orders)}</p>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              orders, {num(day?.day.units_short)} pieces short
             </p>
           </div>
-          <div className="bg-card p-4">
-            <p className="eyebrow">Late over 2h · yesterday</p>
-            <p className="figure mt-2 text-4xl text-breach">
+          <div>
+            <p className="eyebrow">Late over 2 hours</p>
+            <p className="figure mt-1 text-[2.4rem] text-breach">
               {num(day?.day.late_over_2h_by_timestamps)}
             </p>
-            <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-              by planned vs actual
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              delay_minutes says {num(day?.day.late_over_2h_by_delay_field)} — the
-              two sources disagree
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              The other clock says {num(day?.day.late_over_2h_by_delay_field)}.
+              They do not agree.
             </p>
           </div>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            {day ? (
-              <Queue
-                asOf={day.as_of}
-                events={day.events}
-                standing={day.standing}
-              />
-            ) : (
-              <Panel title="Yesterday, as things to do">
-                <p className="text-sm text-muted-foreground">No data.</p>
-              </Panel>
-            )}
-          </div>
-
-          <Panel title="Why two numbers" meta="Cases vs eaches">
-            <p className="text-sm">
-              A line ordered in bottles barely moves a box-weighted average, and
-              a line ordered in boxes barely moves a bottle-weighted one. Same
-              rows, same shortfall, different denominator.
-            </p>
-            {q ? (
-              <p className="mt-3 font-mono text-[11px] text-muted-foreground">
-                execution {num(q.service.execution_pct, 2)}% × availability{" "}
-                {num(q.service.availability_pct, 2)}% = service{" "}
-                {num(q.service.service_pct, 2)}%
-                <br />
-                {q.exclusions.total_orders_excluded.toLocaleString()} orders
-                excluded, all named by the API.
-              </p>
-            ) : null}
+        {day ? (
+          <Queue asOf={day.as_of} events={day.events} standing={day.standing} />
+        ) : (
+          <Panel title="Yesterday">
+            <p className="text-muted-foreground">No data.</p>
           </Panel>
-        </section>
+        )}
 
-        <section className="grid gap-4 lg:grid-cols-2">
-          <Panel title="Divya would call" meta="Lowest case fill">
+        <section className="grid gap-6 lg:grid-cols-2">
+          <Panel title="Shops short on cases" meta="Lowest case fill">
             {outlets.ok ? (
               <OutletTable rows={outlets.data.by_fill_pct} metric="fill" />
             ) : (
-              <p className="text-sm text-muted-foreground">No data.</p>
+              <p className="text-muted-foreground">No data.</p>
             )}
           </Panel>
           <Panel
-            title="Rakesh would call"
-            meta={outlets.ok ? `${outlets.data.overlap} shared` : undefined}
+            title="Shops short on pieces"
+            meta={
+              outlets.ok
+                ? `${outlets.data.overlap} shops sit on both lists`
+                : undefined
+            }
           >
             {outlets.ok ? (
               <OutletTable rows={outlets.data.by_units_short} metric="short" />
             ) : (
-              <p className="text-sm text-muted-foreground">No data.</p>
+              <p className="text-muted-foreground">No data.</p>
             )}
           </Panel>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-3">
+        <section className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <Panel
-              title="Credit notes against dispatch"
+              title="Credit notes"
               meta={m ? m.window.label : undefined}
             >
               {m ? (
                 <>
-                  <div className="grid gap-px border border-border bg-border sm:grid-cols-3">
+                  <div className="grid gap-6 sm:grid-cols-3">
                     {creditTiles(m.credit_notes).map((t) => (
-                      <div key={t.label} className="bg-panel p-3">
+                      <div key={t.label}>
                         <p className="eyebrow">{t.label}</p>
-                        <p className={`figure mt-1 text-2xl ${t.tone}`}>
+                        <p className={`figure mt-1 text-[1.75rem] ${t.tone}`}>
                           {inr(t.value)}
                         </p>
-                        <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                        <p className="mt-1 text-sm text-muted-foreground">
                           {num(t.notes)} notes
                         </p>
                       </div>
                     ))}
                   </div>
-                  <p className="mt-3 text-sm">
-                    A rejected note is not a loss and an undecided one is not a
-                    decision, so none of the three is blended away.
-                  </p>
-                  <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-                    {inr(m.dispatch_inr)} dispatched — priced on what was
-                    delivered, not what was ordered.
-                    <br />
-                    Raised is {num(m.raised_pct, 2)}% of that
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Agreed is a loss. Undecided is still open. Refused is
+                    neither. {inr(m.dispatch_inr)} went out this quarter, priced
+                    on what arrived.
                     {m.ratio_is_material
-                      ? "."
-                      : ", too small to watch as a rate. The rupees are the number."}
+                      ? ` Raised notes are ${num(m.raised_pct, 2)}% of that.`
+                      : " The rupees are the number to watch, not the rate."}
                   </p>
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground">No data.</p>
+                <p className="text-muted-foreground">No data.</p>
               )}
             </Panel>
           </div>
 
-          <Panel
-            title="By category"
-            meta={m ? `${m.by_category.length} categories` : undefined}
-          >
+          <Panel title="By product type">
             {m && m.by_category.length ? (
-              <>
-                <table className="w-full border-collapse font-mono text-[11px] tabular-nums">
-                  <thead>
-                    <tr className="border-b border-foreground">
-                      <th className="pb-1 text-left font-medium text-muted-foreground">
-                        Category
-                      </th>
-                      <th className="pb-1 text-right font-medium text-muted-foreground">
-                        Agreed
-                      </th>
-                      <th className="pb-1 text-right font-medium text-muted-foreground">
-                        Undecided
-                      </th>
+              <table className="w-full border-collapse text-[15px] tabular-nums">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="pb-2 text-left text-sm font-semibold text-muted-foreground">
+                      Type
+                    </th>
+                    <th className="pb-2 text-right text-sm font-semibold text-muted-foreground">
+                      Agreed
+                    </th>
+                    <th className="pb-2 text-right text-sm font-semibold text-muted-foreground">
+                      Open
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {m.by_category.map((c) => (
+                    <tr key={c.category} className="border-b border-border/40">
+                      <td className="py-2">{c.category}</td>
+                      <td className="py-2 text-right text-breach">
+                        {inr(c.settled_inr)}
+                      </td>
+                      <td className="py-2 text-right text-watch">
+                        {inr(c.undecided_inr)}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {m.by_category.map((c) => (
-                      <tr key={c.category} className="border-b border-border/50">
-                        <td className="py-1.5">{c.category}</td>
-                        <td className="py-1.5 text-right text-breach">
-                          {inr(c.settled_inr)}
-                        </td>
-                        <td className="py-1.5 text-right text-watch">
-                          {inr(c.undecided_inr)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <p className="mt-2.5 text-xs text-muted-foreground">
-                  Shown in rupees, not as a share of each category&rsquo;s own
-                  dispatch. They sit inside a narrow band, and a percentage would
-                  dress that flatness up as a ranking.
-                </p>
-              </>
+                  ))}
+                </tbody>
+              </table>
             ) : (
-              <p className="text-sm text-muted-foreground">No data.</p>
+              <p className="text-muted-foreground">No data.</p>
             )}
           </Panel>
         </section>

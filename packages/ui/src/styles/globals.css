@@ -11,10 +11,10 @@
 @source "../**/*.{ts,tsx}";
 
 @theme inline {
-  --font-display: var(--font-display);
-  --font-heading: var(--font-display);
+  --font-display: var(--font-sans);
+  --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  --font-mono: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -75,12 +75,10 @@
 }
 
 /*
-  Control tower theme — built for a screen someone reads every morning.
+  Morning brief — built for a screen someone reads every morning.
 
-  Keeps the dossier bones from kestrel-mindmap.html (square corners, hard rules,
-  mono figures) but lightens the ground and reserves weight for meaning. Cards
-  are near-white so data sits on the brightest surface; the page behind them is
-  kraft, not tan, so hours of reading do not fight the reader.
+  Paper and hard rules stay. The type does not: one sans, sentence case, numbers
+  in the same face. Mono and condensed display made this look like a console.
 
   Colour is a status system, not decoration. Every value below clears 4.5:1 on
   both the card and the page, so a status word is legible wherever it lands.
@@ -156,12 +154,11 @@
   /* Flat. The mind map's ruled paper is a poster texture; behind a table read
      every morning it is just noise competing with the figures. */
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-[17px] leading-relaxed text-foreground;
   }
 
   html {
-    /* tnum keeps columns of figures aligned. A control tower is mostly figures. */
-    font-feature-settings: "ss01" on, "tnum" on;
+    font-feature-settings: "tnum" on;
   }
 
   /* Focus is a hard ink outline, not a soft halo. */
@@ -172,23 +169,20 @@
 }
 
 @layer components {
-  /* A small mono label above a value: "Case fill", "FY26 Q1". Sentence case,
-     because uppercase is slower to read and this appears dozens of times. */
+  /* A quiet label above a value. Same face as the rest of the page. */
   .eyebrow {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.06em;
+    font-family: var(--font-sans);
+    font-size: 0.8rem;
+    font-weight: 600;
     color: var(--muted-foreground);
   }
 
-  /* The headline number on a tile. Teko earns its place at this size and
-     nowhere else; tnum keeps it from shifting as values update. */
+  /* The headline number. Same face, tabular, a little heavier. */
   .figure {
-    font-family: var(--font-display);
-    font-weight: 600;
-    line-height: 0.85;
+    font-family: var(--font-sans);
+    font-weight: 700;
+    line-height: 1;
     font-variant-numeric: tabular-nums;
-    letter-spacing: 0.01em;
   }
 
   /* A status needs to survive being scanned, not read. Colour carries it, and

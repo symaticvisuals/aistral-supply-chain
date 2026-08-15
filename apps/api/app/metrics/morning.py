@@ -55,6 +55,11 @@ def latest_day(conn: sqlite3.Connection) -> dt.date:
     return dt.date.fromisoformat(row["d"][:10])
 
 
+def earliest_day(conn: sqlite3.Connection) -> dt.date:
+    row = conn.execute("SELECT MIN(order_date) AS d FROM orders").fetchone()
+    return dt.date.fromisoformat(row["d"][:10])
+
+
 def resolve_as_of(conn: sqlite3.Connection, spec: str | None) -> dt.date:
     """The day being reported on.
 
@@ -473,6 +478,8 @@ def morning(conn, day: dt.date, region_id: int | None = None) -> dict:
     return {
         "as_of": day.isoformat(),
         "is_latest": day == latest_day(conn),
+        "earliest": earliest_day(conn).isoformat(),
+        "latest": latest_day(conn).isoformat(),
         "day": day_summary(conn, day, region_id),
         "events": [e.__dict__ for e in by_severity(events)],
         "standing": [e.__dict__ for e in by_severity(standing)],

@@ -1,27 +1,15 @@
-import { IBM_Plex_Mono, IBM_Plex_Sans, Teko } from "next/font/google"
+import { Source_Sans_3 } from "next/font/google"
 import type { Metadata } from "next"
 
 import "@workspace/ui/globals.css"
 import { cn } from "@workspace/ui/lib/utils"
 
-const sans = IBM_Plex_Sans({
+// One face for the whole morning brief. A second family (especially a mono)
+// made this look like a developer console. Tabular figures live in this face.
+const sans = Source_Sans_3({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "600", "700"],
   variable: "--font-sans",
-})
-
-const mono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-mono",
-})
-
-// Condensed and headline-only. Teko is the loudest thing in the theme, so it
-// never sets body copy — headings and figures, nothing else.
-const display = Teko({
-  subsets: ["latin"],
-  weight: ["500", "600"],
-  variable: "--font-display",
 })
 
 export const metadata: Metadata = {
@@ -37,13 +25,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={cn(
-        "antialiased",
-        sans.variable,
-        mono.variable,
-        display.variable,
-        "font-sans"
-      )}
+      className={cn("antialiased", sans.variable, "font-sans")}
     >
       <body>{children}</body>
     </html>
