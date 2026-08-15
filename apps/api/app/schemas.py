@@ -186,6 +186,12 @@ class MoneyResponse(BaseModel):
     )
     by_category: list[CategoryRowOut]
     pending_queue: PendingQueueOut
+    above_mrp: dict | None = Field(
+        default=None,
+        description="Listings selling above the maximum price printed on the "
+                    "pack. Counted, never ranked: the spread between "
+                    "retailers is about two standard errors.",
+    )
     notes: list[str]
 
 
@@ -202,6 +208,19 @@ class StockLineOut(BaseModel):
     cannot_sell: bool = Field(
         description="Days of cover exceed the days left. Arithmetic, not a worry."
     )
+    shelf_city: str | None = Field(
+        default=None,
+        description="Which city's shelf the price below is from. Named rather "
+                    "than assumed: a DC feeds more than its own metro.",
+    )
+    shelf_lowest_inr: float | None = Field(
+        default=None,
+        description="Deepest discount standing in that city, averaged over the "
+                    "listing's own observations. Says whether a promotion has "
+                    "room left; null where we do not scrape.",
+    )
+    shelf_vs_mrp_pct: float | None = None
+    shelf_listings: int = 0
 
 
 class ExpiryResponse(BaseModel):
@@ -220,6 +239,15 @@ class ExpiryResponse(BaseModel):
     doomed_lines: int
     doomed_cases: int
     doomed_value_inr: float
+    doomed_priced: int = Field(
+        default=0,
+        description="How many of the lines that cannot sell through have a "
+                    "shelf price. Stated so a mostly-blank column reads as "
+                    "coverage rather than as a bug.",
+    )
+    doomed_total: int = 0
+    price_age_days: int | None = None
+    price_cities: list[str] = Field(default_factory=list)
     lines: list[StockLineOut]
     notes: list[str]
 

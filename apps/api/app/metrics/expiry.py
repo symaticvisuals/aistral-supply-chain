@@ -21,8 +21,10 @@ months left. That bound is reported rather than hidden.
 """
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
+
+from app.metrics import prices
 
 # "Near" is a judgement, not a fact. One place to change it.
 NEAR_DAYS = 30
@@ -50,6 +52,13 @@ class StockLine:
     value_inr: float
     expiry_date: str
     cannot_sell: bool
+    # What shops charge for this SKU where the DC sits, when we scrape there.
+    # The city is carried with the price rather than assumed away: a DC feeds
+    # more than its own metro, and the reader can see which shelf this is.
+    shelf_city: str | None = None
+    shelf_lowest_inr: float | None = None
+    shelf_vs_mrp_pct: float | None = None
+    shelf_listings: int = 0
 
 
 @dataclass(frozen=True)
@@ -64,6 +73,33 @@ class AtRisk:
     doomed_cases: int
     doomed_value_inr: float
     lines: list[StockLine]
+    doomed_priced: int = 0
+    doomed_total: int = 0
+    price_age_days: int | None = None
+    price_cities: list = field(default_factory=list)
+
+
+def _line(row: sqlite3.Row, book) -> StockLine:
+    """One rack line, with the shelf price beside it when there is one.
+
+    The panel already names two levers, a transfer or a promotion. Which one
+    applies turns on whether the price has anywhere left to go: stock already
+    selling a quarter below MRP cannot be discounted out of trouble, and stock
+    at nearly full price can. The lowest standing price in that city is the one
+    that settles it, so that is the number carried here.
+    """
+    shelf = book.for_warehouse_city(row["sku"], row["dc_city"]) if book else None
+    return StockLine(
+        warehouse=row["warehouse"], product=row["product"], sku=row["sku"],
+        batch=row["batch"], on_hand_cases=row["on_hand_cases"],
+        days_left=row["days_left"], days_of_cover=row["days_of_cover"],
+        value_inr=row["value_inr"], expiry_date=row["expiry_date"][:10],
+        cannot_sell=row["days_of_cover"] > row["days_left"],
+        shelf_city=shelf.city if shelf else None,
+        shelf_lowest_inr=shelf.lowest_inr if shelf else None,
+        shelf_vs_mrp_pct=round(shelf.lowest_vs_mrp_pct, 1) if shelf else None,
+        shelf_listings=shelf.listings if shelf else 0,
+    )
 
 
 def latest_snapshot(conn: sqlite3.Connection, on_or_before: date) -> date | None:
@@ -81,6 +117,7 @@ def at_risk(
     as_of: date,
     region_id: int | None = None,
     limit: int = 10,
+    book=None,
 ) -> AtRisk:
     """What is on the rack that should not still be there.
 
@@ -103,6 +140,7 @@ def at_risk(
         f"""SELECT w.warehouse_code AS warehouse, p.product_name AS product,
                    p.sku_code AS sku, i.batch_id AS batch,
                    i.on_hand_cases, i.days_of_cover, i.expiry_date,
+                   w.city AS dc_city,
                    CAST({_DAYS_LEFT} AS INTEGER) AS days_left,
                    ROUND({_VALUE}) AS value_inr
               FROM inventory_snapshots i
@@ -116,16 +154,7 @@ def at_risk(
         args,
     ).fetchall()
 
-    lines = [
-        StockLine(
-            warehouse=r["warehouse"], product=r["product"], sku=r["sku"],
-            batch=r["batch"], on_hand_cases=r["on_hand_cases"],
-            days_left=r["days_left"], days_of_cover=r["days_of_cover"],
-            value_inr=r["value_inr"], expiry_date=r["expiry_date"][:10],
-            cannot_sell=r["days_of_cover"] > r["days_left"],
-        )
-        for r in rows
-    ]
+    lines = [_line(r, book) for r in rows]
     near = [line for line in lines if line.days_left <= NEAR_DAYS]
     doomed = [line for line in lines if line.cannot_sell]
     age = (as_of - snapshot).days
@@ -140,6 +169,12 @@ def at_risk(
         doomed_lines=len(doomed),
         doomed_cases=sum(line.on_hand_cases for line in doomed),
         doomed_value_inr=sum(line.value_inr for line in doomed),
+        # Stated on the face of the panel. A price column that is mostly blank
+        # reads as broken unless the coverage is a number next to it.
+        doomed_priced=sum(1 for line in doomed if line.shelf_lowest_inr),
+        doomed_total=len(doomed),
+        price_age_days=book.age_days(as_of) if book else None,
+        price_cities=sorted(set(prices.DC_CITY.values())) if book else [],
         # Ranked by value, and the ones that cannot sell through come first —
         # those are arithmetic rather than a worry.
         lines=sorted(lines, key=lambda s: (not s.cannot_sell, -s.value_inr))[:limit],

@@ -137,6 +137,8 @@ export type Money = {
     oldest_date: string | null
     oldest_days: number | null
   }
+  /** Listings sold above the price printed on the pack. Counted, never ranked. */
+  above_mrp: { listings: number; of_listings: number; pct: number | null } | null
   notes: string[]
 }
 
@@ -151,6 +153,11 @@ export type Expiry = {
   doomed_lines: number
   doomed_cases: number
   doomed_value_inr: number
+  /** How many of the doomed lines have a shelf price, and how old it is. */
+  doomed_priced: number
+  doomed_total: number
+  price_age_days: number | null
+  price_cities: string[]
   lines: {
     warehouse: string
     product: string
@@ -160,6 +167,12 @@ export type Expiry = {
     days_of_cover: number
     value_inr: number
     cannot_sell: boolean
+    /** Named, not assumed — a DC feeds more than its own metro. */
+    shelf_city: string | null
+    /** Deepest discount standing in that city. Says if a promo has room. */
+    shelf_lowest_inr: number | null
+    shelf_vs_mrp_pct: number | null
+    shelf_listings: number
   }[]
   notes: string[]
 }

@@ -213,6 +213,8 @@ def get_money(
     leak = money_q.leakage(conn, w, region_id)
     categories = money_q.by_category(conn, w, region_id)
     pending = money_q.pending_queue(conn, w.end, region_id)
+    book = prices_q.load(conn)
+    breach = book.above_mrp() if book else None
 
     notes = [
         "Dispatch value is delivered quantity at line price after discount. "
@@ -244,6 +246,14 @@ def get_money(
             f"{bottom.category} trails, so no single category is the problem."
         )
 
+    if breach and breach["listings"]:
+        notes.append(
+            f"{breach['listings']} of {breach['of_listings']} listings on the "
+            f"price tracker sell above the maximum price printed on the pack. "
+            f"Counted, not ranked — the spread between retailers is about two "
+            f"standard errors, which will not name one of them."
+        )
+
     return MoneyResponse(
         window=_window_out(w), region=region,
         dispatch_inr=leak.dispatch_inr,
@@ -257,6 +267,7 @@ def get_money(
         raised_pct=leak.raised_pct,
         ratio_is_material=leak.material,
         by_category=[c.__dict__ for c in categories],
+        above_mrp=breach,
         pending_queue={
             "notes_n": pending.notes_n,
             "value_inr": pending.value_inr,
@@ -289,7 +300,8 @@ def get_expiry(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     region_id = _region_id(conn, region)
-    risk = expiry_q.at_risk(conn, day, region_id, limit)
+    book = prices_q.load(conn)
+    risk = expiry_q.at_risk(conn, day, region_id, limit, book)
 
     notes = [
         "Value is on-hand cases at list price, which is per each in this data.",
@@ -304,6 +316,26 @@ def get_expiry(
             f"The stock position is {risk.snapshot_age_days} days old. Snapshots "
             f"land weekly, so treat these as leads rather than counts."
         )
+    if book is None:
+        notes.append(
+            "No shelf prices have been collected, so this cannot say whether a "
+            "line still has room to discount. Run `python -m app.bazaarpulse`."
+        )
+    else:
+        notes.append(
+            f"Shelf price is the lowest standing price for that SKU in the "
+            f"named city, so it answers whether a promotion has room left — a "
+            f"line already a quarter below MRP cannot be discounted out of "
+            f"trouble, and one near full price can. "
+            f"{risk.doomed_priced} of {risk.doomed_total} lines that cannot "
+            f"sell through have one; the tracker covers "
+            f"{', '.join(risk.price_cities)} and no other depot city."
+        )
+        notes.append(
+            "The city is named on the row rather than assumed. A DC feeds more "
+            "than its own metro, so whether that shelf is the right comparison "
+            "is the reader's call, not a join we made quietly."
+        )
 
     return ExpiryResponse(
         as_of=day.isoformat(), region=region,
@@ -311,6 +343,8 @@ def get_expiry(
             risk.snapshot_date.isoformat() if risk.snapshot_date else None),
         snapshot_age_days=risk.snapshot_age_days,
         is_stale=risk.is_stale,
+        doomed_priced=risk.doomed_priced, doomed_total=risk.doomed_total,
+        price_age_days=risk.price_age_days, price_cities=risk.price_cities,
         near_lines=risk.near_lines, near_cases=risk.near_cases,
         near_value_inr=risk.near_value_inr,
         doomed_lines=risk.doomed_lines, doomed_cases=risk.doomed_cases,

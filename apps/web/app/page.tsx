@@ -348,6 +348,15 @@ export default async function Page({
                       ? ` Raised notes are ${num(m.raised_pct, 2)}% of that.`
                       : " The rupees are the number to watch, not the rate."}
                   </p>
+                  {/* Not a section. Money leaking out of the brand, one line. */}
+                  {m.above_mrp && m.above_mrp.listings > 0 ? (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Separately, {num(m.above_mrp.listings)} of{" "}
+                      {num(m.above_mrp.of_listings)} listings on the price
+                      tracker sell above the maximum price printed on the pack.
+                      Counted, not ranked — no one chain stands out.
+                    </p>
+                  ) : null}
                 </>
               ) : (
                 <p className="text-muted-foreground">No data.</p>
@@ -436,6 +445,9 @@ export default async function Page({
                         Cover
                       </th>
                       <th className="pb-2 text-right text-sm font-semibold text-muted-foreground">
+                        On the shelf
+                      </th>
+                      <th className="pb-2 text-right text-sm font-semibold text-muted-foreground">
                         Value
                       </th>
                     </tr>
@@ -465,6 +477,33 @@ export default async function Page({
                         >
                           {num(line.days_of_cover, 1)}
                         </td>
+                        {/* Deep discount already standing means a promotion has
+                            nowhere left to go, and the answer is a transfer.
+                            Near full price means a markdown can still work. */}
+                        <td className="py-2.5 text-right">
+                          {line.shelf_lowest_inr ? (
+                            <>
+                              {inr(line.shelf_lowest_inr)}{" "}
+                              <span
+                                className={
+                                  (line.shelf_vs_mrp_pct ?? 0) <= -20
+                                    ? "text-breach"
+                                    : "text-muted-foreground"
+                                }
+                              >
+                                {num(line.shelf_vs_mrp_pct, 0)}%
+                              </span>
+                              <span className="block text-xs text-muted-foreground">
+                                {line.shelf_city}
+                                {line.shelf_listings > 1
+                                  ? ` · ${line.shelf_listings} shops`
+                                  : ""}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
                         <td className="py-2.5 text-right font-semibold">
                           {inr(line.value_inr)}
                         </td>
@@ -479,6 +518,30 @@ export default async function Page({
                   counted weekly, so this panel moves on the count, not on the
                   day above it.
                 </p>
+                {/* A price column that is mostly blank reads as a bug unless the
+                    coverage sits next to it as a number. */}
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {stock.price_cities.length ? (
+                    <>
+                      <span className="text-foreground">
+                        On the shelf
+                      </span>{" "}
+                      is the lowest price shops in that city actually charge,
+                      against the MRP on the pack — already deep, and a
+                      markdown has nowhere to go; near full price, and it
+                      still can. {num(stock.doomed_priced)} of{" "}
+                      {num(stock.doomed_total)} lines that cannot clear have
+                      one: we track {stock.price_cities.join(", ")} and no
+                      other depot city. The city is named because a DC feeds
+                      more than its own.
+                    </>
+                  ) : (
+                    <>
+                      No shelf prices collected, so this cannot say whether a
+                      line still has room to discount.
+                    </>
+                  )}
+                </p>
               </>
             ) : (
               <p className="text-muted-foreground">
@@ -489,6 +552,7 @@ export default async function Page({
             )}
           </Panel>
         </section>
+
       </main>
     </div>
   )
