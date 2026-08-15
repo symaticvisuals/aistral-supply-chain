@@ -165,6 +165,62 @@ def return_reason_signal(conn) -> Finding:
     )
 
 
+def temperature_flag_signal(conn) -> Finding:
+    """Does the excursion flag track the temperature it claims to record?
+
+    If it means anything, its rate must climb with the reading. A flag that
+    fires as often at 0C as at 15C is a coin toss wearing a thermometer.
+    """
+    rows = conn.execute("""
+        SELECT CASE WHEN max_temp_celsius <= 4 THEN '1. in band or colder'
+                    WHEN max_temp_celsius <= 8 THEN '2. 4-8C'
+                    WHEN max_temp_celsius <= 12 THEN '3. 8-12C'
+                    ELSE '4. over 12C' END AS band,
+               COUNT(*) AS deliveries,
+               SUM(temperature_excursion_flag) AS flagged,
+               1.0 * SUM(temperature_excursion_flag) / COUNT(*) AS rate
+          FROM deliveries WHERE max_temp_celsius IS NOT NULL
+         GROUP BY band ORDER BY band""").fetchall()
+
+    rates = [r["rate"] for r in rows]
+    spread = (max(rates) - min(rates)) if len(rates) > 1 else None
+    # Under a point of spread across the whole range is not a sensor.
+    noise = spread is not None and spread < 0.01
+
+    hot = _one(conn, """
+        SELECT COUNT(*) AS n, SUM(d.temperature_excursion_flag) AS flagged
+          FROM (SELECT d.delivery_id, d.max_temp_celsius,
+                       d.temperature_excursion_flag,
+                       MAX(p.is_chilled) AS chilled
+                  FROM deliveries d
+                  JOIN order_lines ol ON ol.order_id = d.order_id
+                  JOIN products p ON p.product_id = ol.product_id
+                 GROUP BY d.delivery_id) d
+         WHERE d.chilled = 1 AND d.max_temp_celsius > 8""")
+
+    return Finding(
+        id="TEMPERATURE_FLAG_NO_SIGNAL",
+        severity="blocks_metric" if noise else "clean",
+        statement=(
+            "temperature_excursion_flag fires at the same rate at every "
+            "temperature, in band and far out of it alike, so it records nothing. "
+            "Trusting it both invents excursions on ambient-only loads and hides "
+            f"real ones: {hot['n']:,} deliveries carried chilled stock above 8C and "
+            f"the flag caught {hot['flagged']:,} of them. Cold chain is computed "
+            "from max_temp_celsius and what was actually on the truck instead."
+            if noise else
+            "The excursion flag fires more often as the temperature rises."
+        ),
+        evidence={
+            "by_band": [dict(r) | {"rate": round(r["rate"], 4)} for r in rows],
+            "rate_spread": round(spread, 4) if spread is not None else None,
+            "chilled_above_8c": hot["n"],
+            "of_those_flagged": hot["flagged"],
+        },
+        affects=["cold_chain"],
+    )
+
+
 def credit_approval_trail(conn) -> Finding:
     rows = conn.execute("""
         SELECT status, COUNT(*) AS n,
@@ -509,6 +565,7 @@ def all_findings(conn: sqlite3.Connection, window: Window) -> list[Finding]:
         header_ties_to_lines(conn), net_value_by_source(conn), city_spellings(conn),
         route_region_mismatch(conn), outlet_fill_is_noisy(conn, window),
         return_reason_signal(conn), credit_approval_trail(conn),
+        temperature_flag_signal(conn),
         line_value_is_ordered(conn), credit_leakage_immaterial(conn, window),
     ]
     rank = {"blocks_metric": 0, "advisory": 1, "clean": 2}

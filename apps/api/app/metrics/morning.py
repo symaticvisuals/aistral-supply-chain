@@ -22,6 +22,39 @@ Severity = Literal["breach", "watch", "info"]
 
 LATE_MINUTES = 120  # "over two hours late", the threshold in the brief
 
+# Chilled rides at 2-4C. 8C is the point past which a load is a conversation
+# rather than a wobble — set here, in one place, because it is a judgement and
+# Divya may want it somewhere else.
+CHILLED_BAND_MAX = 8.0
+
+# The data gives us a peak temperature and no duration, so 8-12C cannot be
+# called: an hour at 9C is nothing, a day at 9C is not. Above 12C duration
+# stops mattering. That is the honest line between "look at this" and "this
+# stock is gone", and it is why the two get different tiers.
+CHILLED_SPOILED = 12.0
+
+# A morning list nobody finishes is a morning list nobody opens.
+MAX_CASES_LISTED = 6
+
+# A stock refusal to modern trade is worse than the same refusal to a kirana:
+# MT fines on units short, so it costs money as well as service.
+PENALISING_CHANNEL = "MT"
+
+# Half a DC's drops late stops being a delivery problem and starts being the DC.
+DC_SYSTEMIC_SHARE = 50.0
+
+# A SKU short here is one stock fix that clears every shop on the line.
+CONCENTRATED_SHOPS = 5
+
+# What to do about a case, in the order Divya should work them.
+ACT, DECIDE, PATTERN = "act", "decide", "pattern"
+PRIORITY_RANK = {ACT: 0, DECIDE: 1, PATTERN: 2}
+PRIORITY_LABEL = {
+    ACT: "Act before noon",
+    DECIDE: "Decide today",
+    PATTERN: "Pattern",
+}
+
 # TELEMATICS_A writes ISO; TELEMATICS_B writes 01-Apr-2025 01:00 PM. Neither is
 # wrong, they are just different vendors, so parse both and never assume.
 _ARRIVAL_FORMATS = ("%Y-%m-%d %H:%M:%S", "%d-%b-%Y %I:%M %p", "%Y-%m-%d %H:%M")
@@ -48,6 +81,9 @@ class Event:
     items: list[dict] = field(default_factory=list)
     # How many cases exist. The list may be a short working set of that.
     population: int = 0
+    # The worst of its cases, and how many of them need doing this morning.
+    priority: str = "pattern"
+    act_now: int = 0
 
 
 def latest_day(conn: sqlite3.Connection) -> dt.date:
@@ -84,21 +120,46 @@ def _args(day: dt.date, region_id: int | None) -> tuple[str, list]:
 
 
 def cold_chain(conn, day, region_id) -> Event | None:
-    """A chilled load that went warm. Always worth a call — it is silent money."""
+    """Chilled stock that rode too warm, measured rather than flagged.
+
+    `temperature_excursion_flag` is not used. It fires on 3.1% of deliveries in
+    every temperature band — under 2C, in band, and over 12C alike — so it is a
+    coin flip, not a reading (see quality.temperature_flag_signal). Trusting it
+    both invents excursions on ambient loads and hides real ones: on 30 Jun 2026
+    it caught 4 deliveries while 28 chilled loads actually rode above the band,
+    and the two sets overlapped on one.
+
+    So the event is computed from what the truck reported and what was on it:
+    chilled lines, actually delivered, above CHILLED_BAND_MAX. Ranked by the
+    value at risk, because that is the number that decides whether it is worth
+    a van.
+    """
     rc, args = _args(day, region_id)
+    args.append(CHILLED_BAND_MAX)
     rows = conn.execute(
         f"""SELECT d.delivery_note_number AS ref, ot.outlet_name AS outlet,
-                   r.route_code AS route, d.max_temp_celsius AS max_temp_c,
+                   r.route_code AS route,
+                   ROUND(d.max_temp_celsius, 1) AS max_temp_c,
                    d.delay_minutes AS delay_minutes,
-                   d.vehicle_registration AS vehicle
+                   d.vehicle_registration AS vehicle,
+                   d.temperature_excursion_flag AS vendor_flag,
+                   ROUND(SUM(CASE WHEN p.is_chilled = 1
+                        THEN ol.delivered_qty * ol.unit_price_inr
+                             * (1 - COALESCE(ol.line_discount_pct, 0) / 100.0)
+                        END)) AS chilled_value_inr
               FROM deliveries d
               JOIN orders o ON o.order_id = d.order_id
               JOIN outlets ot ON ot.outlet_id = o.outlet_id
               JOIN routes r ON r.route_id = d.route_id
+              JOIN order_lines ol ON ol.order_id = d.order_id
+              JOIN products p ON p.product_id = ol.product_id
              WHERE o.order_date = ? {rc}
                AND {outlet_filter()}
-               AND d.temperature_excursion_flag = 1
-             ORDER BY d.max_temp_celsius DESC""",
+               AND d.max_temp_celsius > ?
+             GROUP BY d.delivery_id
+             HAVING chilled_value_inr > 0
+             ORDER BY d.max_temp_celsius > {CHILLED_SPOILED} DESC,
+                      chilled_value_inr DESC""",
         args,
     ).fetchall()
     if not rows:
@@ -116,14 +177,23 @@ def cold_chain(conn, day, region_id) -> Event | None:
             )
         items.append(item)
 
+    at_risk = sum(i["chilled_value_inr"] for i in items)
+    missed_by_vendor = sum(1 for i in items if not i["vendor_flag"])
+    spoiled = sum(1 for i in items if i["max_temp_c"] > CHILLED_SPOILED)
     return Event(
         kind="cold_chain",
         severity="breach",
-        headline=f"{len(rows)} chilled delivery(s) went warm",
+        headline=f"{len(rows)} chilled load(s) above {CHILLED_BAND_MAX:.0f}C",
         owner="Cold chain",
-        detail="Chilled stock rides at 2-4C. Anything above that is spoilage "
-               "nobody has noticed yet.",
-        items=items,
+        detail=(
+            f"Rs {at_risk:,.0f} of chilled stock rode warm and is sitting in shops "
+            f"now, {spoiled} of it above {CHILLED_SPOILED:.0f}C. Measured from the "
+            f"temperature the truck reported, not from temperature_excursion_flag, "
+            f"which fires at the same rate whatever the reading — it missed "
+            f"{missed_by_vendor} of these. There is no duration in the data, so "
+            f"8-12C is a look and above 12C is a write-off."
+        ),
+        items=items[:MAX_CASES_LISTED],
         population=len(items),
     )
 
@@ -419,11 +489,50 @@ def _natural_id(item: dict) -> str:
     raise ValueError(f"item has no stable id: {item!r}")
 
 
+def case_priority(kind: str, item: dict) -> str:
+    """What to do about this case today.
+
+    Deliberately not a score. These cases are not commensurable — a warm load is
+    spoiled rupees, a refusal is units never sent, a late drop lost nothing
+    because the goods arrived. Averaging them into one number would be the same
+    dishonesty as blending case fill with each fill. So the question asked here
+    is the one Divya actually asks: can what I do this morning still change the
+    outcome, or is this only a trend?
+    """
+    if kind == "cold_chain":
+        # Above 12C the load is gone whatever the duration was — that is a
+        # write-off to raise today. Between 8 and 12 it turns on how long it sat
+        # there, which this data does not record, so somebody has to look.
+        temp = item.get("max_temp_c") or 0
+        return ACT if temp > CHILLED_SPOILED else DECIDE
+    if kind == "late_delivery":
+        late_pct = item.get("late_pct") or 0
+        # Nothing was lost — it arrived. One late drop is a trend; half a DC's
+        # drops is the DC, and that is a conversation to have this morning.
+        return DECIDE if late_pct >= DC_SYSTEMIC_SHARE else PATTERN
+    if kind == "stockout_refusal":
+        # The shop got nothing and we can still ship. Always today's problem.
+        return ACT
+    if kind == "credit_refusal":
+        # Finance chose this. Supply chain cannot unblock it.
+        return DECIDE
+    if kind == "sku_short":
+        shops = item.get("shops") or 0
+        return ACT if shops >= CONCENTRATED_SHOPS else PATTERN
+    if kind == "credit_backlog":
+        # A decision queue by definition. Nothing to fix, something to rule on.
+        return DECIDE
+    return PATTERN
+
+
 def item_label(kind: str, item: dict) -> str:
     """One line a person can read. Not a dump of every column."""
     if kind == "cold_chain":
         temp = item.get("max_temp_c")
         name = item.get("outlet") or item.get("ref")
+        value = item.get("chilled_value_inr")
+        if value is not None and temp is not None:
+            return f"{name}, Rs {value:,.0f} chilled at {temp}C"
         return f"{name}, {temp}C" if temp is not None else str(name)
     if kind == "late_delivery":
         return (
@@ -452,6 +561,14 @@ def stamp(event: Event) -> Event:
     for item in event.items:
         item["case_id"] = f"{event.kind}:{_natural_id(item)}"
         item["label"] = item_label(event.kind, item)
+        item["priority"] = case_priority(event.kind, item)
+    # Cases inside a category can differ — one DC late on every drop sits above
+    # one late on three. Sort them, then let the category inherit its worst.
+    event.items.sort(key=lambda i: PRIORITY_RANK[i["priority"]])
+    event.priority = (
+        event.items[0]["priority"] if event.items else PATTERN
+    )
+    event.act_now = sum(1 for i in event.items if i["priority"] == ACT)
     if not event.population:
         event.population = len(event.items)
     return event
@@ -472,8 +589,12 @@ def morning(conn, day: dt.date, region_id: int | None = None) -> dict:
         sku_shortfalls(conn, day, region_id),
     ]
     standing = [credit_backlog(conn, day, region_id)]
-    by_severity = lambda es: sorted(  # noqa: E731
-        (stamp(e) for e in es if e is not None), key=lambda e: _RANK[e.severity]
+    # Worst case first, then how many cases of that kind need doing. Severity
+    # is kept on each event but no longer decides the order: it is assigned per
+    # category, and the question here is per case.
+    ranked = lambda es: sorted(  # noqa: E731
+        (stamp(e) for e in es if e is not None),
+        key=lambda e: (PRIORITY_RANK[e.priority], -e.act_now, _RANK[e.severity]),
     )
     return {
         "as_of": day.isoformat(),
@@ -481,11 +602,19 @@ def morning(conn, day: dt.date, region_id: int | None = None) -> dict:
         "earliest": earliest_day(conn).isoformat(),
         "latest": latest_day(conn).isoformat(),
         "day": day_summary(conn, day, region_id),
-        "events": [e.__dict__ for e in by_severity(events)],
-        "standing": [e.__dict__ for e in by_severity(standing)],
+        "events": [e.__dict__ for e in ranked(events)],
+        "standing": [e.__dict__ for e in ranked(standing)],
+        "priorities": [
+            {"id": key, "label": PRIORITY_LABEL[key]}
+            for key in (ACT, DECIDE, PATTERN)
+        ],
         "notes": [
             "Events, not rates. At ~150 orders a day an outlet places about one, "
             "so a per-shop daily fill rate is one order's luck.",
+            "Cases are tiered by whether this morning can still change the "
+            "outcome, not by a blended score. A warm load is spoiled rupees, a "
+            "refusal is units never sent, a late drop lost nothing — those do "
+            "not add up, so they are not added up.",
             "'Late' has two sources that disagree on a third of deliveries. Both "
             "counts are given; neither is presented as the answer.",
             "Standing items were already true this morning. They are listed apart "

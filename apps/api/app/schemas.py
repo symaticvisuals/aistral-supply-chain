@@ -205,6 +205,10 @@ class EventOut(BaseModel):
     population: int = Field(
         description="How many cases exist. items may be a shorter working set."
     )
+    priority: str = Field(
+        description="Worst case in this category: act | decide | pattern."
+    )
+    act_now: int = Field(description="Cases here that need doing this morning.")
 
 
 class HandleIn(BaseModel):
@@ -227,10 +231,14 @@ class MorningResponse(BaseModel):
     region: str | None
     day: dict
     events: list[EventOut] = Field(
-        description="What happened on this day. Empty is a valid answer."
+        description="What happened on this day. Empty is a valid answer. "
+                    "Ordered by what this morning can still change."
     )
     standing: list[EventOut] = Field(
         description="Already true before the day started — a backlog, not fresh "
                     "damage. Kept apart so the two are never confused."
+    )
+    priorities: list[dict] = Field(
+        description="The tiers and their labels, so the screen never hardcodes them."
     )
     notes: list[str]
