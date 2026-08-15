@@ -1,7 +1,9 @@
+import datetime as dt
 import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app import handled
 from app.db import get_conn
 from app.metrics import fill as fill_q
 from app.metrics import money as money_q
@@ -12,6 +14,8 @@ from app.metrics.scope import Scope, ScopeError, build_receipt, get_scope
 from app.metrics.windows import Window, WindowError, parse_window
 from app.schemas import (
     FillResponse,
+    HandleIn,
+    HandleOut,
     MoneyResponse,
     MorningResponse,
     OutletsResponse,
@@ -281,4 +285,29 @@ def get_morning(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     region_id = _region_id(conn, region)
-    return MorningResponse(region=region, **morning_q.morning(conn, day, region_id))
+    payload = morning_q.morning(conn, day, region_id)
+    handled.annotate(payload["events"], payload["as_of"])
+    handled.annotate(payload["standing"], "standing")
+    return MorningResponse(region=region, **payload)
+
+
+def _as_of_key(value: str) -> str:
+    if value == "standing":
+        return value
+    try:
+        dt.date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail="as_of must be YYYY-MM-DD or 'standing'"
+        ) from exc
+    return value
+
+
+@router.post("/morning/handle", response_model=HandleOut)
+def handle_case(body: HandleIn) -> HandleOut:
+    """Tick a case off the queue. Every screen reads the same file."""
+    if not body.case_id.strip():
+        raise HTTPException(status_code=400, detail="case_id is required")
+    as_of = _as_of_key(body.as_of)
+    handled.set_done(body.case_id.strip(), as_of, body.done)
+    return HandleOut(case_id=body.case_id.strip(), as_of=as_of, done=body.done)

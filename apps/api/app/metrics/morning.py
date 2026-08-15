@@ -46,6 +46,8 @@ class Event:
     owner: str
     detail: str = ""
     items: list[dict] = field(default_factory=list)
+    # How many cases exist. The list may be a short working set of that.
+    population: int = 0
 
 
 def latest_day(conn: sqlite3.Connection) -> dt.date:
@@ -117,6 +119,7 @@ def cold_chain(conn, day, region_id) -> Event | None:
         detail="Chilled stock rides at 2-4C. Anything above that is spoilage "
                "nobody has noticed yet.",
         items=items,
+        population=len(items),
     )
 
 
@@ -205,6 +208,7 @@ def late_deliveries(conn, day, region_id) -> Event | None:
             f"are shown and neither is called the answer."
         ),
         items=flagged,
+        population=len(flagged),
     )
 
 
@@ -250,7 +254,8 @@ def refusals(conn, day, region_id) -> list[Event]:
         out.append(
             Event(kind=kind, severity=severity,
                   headline=f"{len(items)} order(s) {label}",
-                  owner=owner, detail=detail, items=items)
+                  owner=owner, detail=detail, items=items,
+                  population=len(items))
         )
     return out
 
@@ -303,6 +308,7 @@ def sku_shortfalls(conn, day, region_id, top: int = 5) -> Event | None:
             f"shops at once — one stock fix clears every shop on the line."
         ),
         items=[dict(r) for r in rows[:top]],
+        population=len(rows),
     )
 
 
@@ -352,6 +358,7 @@ def credit_backlog(conn, day, region_id) -> Event | None:
         owner="Credit desk",
         detail=detail,
         items=money.pending_to_work(conn, day, region_id),
+        population=queue.notes_n,
     )
 
 
@@ -400,6 +407,51 @@ def day_summary(conn, day, region_id) -> dict:
 _RANK = {"breach": 0, "watch": 1, "info": 2}
 
 
+def _natural_id(item: dict) -> str:
+    for key in ("ref", "warehouse", "sku", "product"):
+        if item.get(key) is not None:
+            return str(item[key])
+    raise ValueError(f"item has no stable id: {item!r}")
+
+
+def item_label(kind: str, item: dict) -> str:
+    """One line a person can read. Not a dump of every column."""
+    if kind == "cold_chain":
+        temp = item.get("max_temp_c")
+        name = item.get("outlet") or item.get("ref")
+        return f"{name}, {temp}C" if temp is not None else str(name)
+    if kind == "late_delivery":
+        return (
+            f"{item.get('warehouse')}, {item.get('late')} of "
+            f"{item.get('drops')} drops late"
+        )
+    if kind in ("stockout_refusal", "credit_refusal"):
+        units = item.get("units")
+        qty = f"{int(units):,}" if units is not None else "?"
+        channel = item.get("channel") or ""
+        return f"{item.get('outlet')}, {qty} units, {channel}".rstrip(", ")
+    if kind == "sku_short":
+        short = item.get("units_short")
+        qty = f"{int(short):,}" if short is not None else "?"
+        return f"{item.get('product')}, {item.get('shops')} shops, {qty} short"
+    if kind == "credit_backlog":
+        value = item.get("value_inr")
+        money = f"Rs {value:,.0f}" if value is not None else ""
+        return f"{item.get('outlet')}, {item.get('days_waiting')} days, {money}".rstrip(
+            ", "
+        )
+    return str(item.get("ref") or item.get("product") or "?")
+
+
+def stamp(event: Event) -> Event:
+    for item in event.items:
+        item["case_id"] = f"{event.kind}:{_natural_id(item)}"
+        item["label"] = item_label(event.kind, item)
+    if not event.population:
+        event.population = len(event.items)
+    return event
+
+
 def morning(conn, day: dt.date, region_id: int | None = None) -> dict:
     """Two lists, kept apart on purpose.
 
@@ -416,7 +468,7 @@ def morning(conn, day: dt.date, region_id: int | None = None) -> dict:
     ]
     standing = [credit_backlog(conn, day, region_id)]
     by_severity = lambda es: sorted(  # noqa: E731
-        (e for e in es if e is not None), key=lambda e: _RANK[e.severity]
+        (stamp(e) for e in es if e is not None), key=lambda e: _RANK[e.severity]
     )
     return {
         "as_of": day.isoformat(),

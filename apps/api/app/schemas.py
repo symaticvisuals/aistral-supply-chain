@@ -202,6 +202,21 @@ class EventOut(BaseModel):
     owner: str = Field(description="Who can actually fix this before noon.")
     detail: str
     items: list[dict]
+    population: int = Field(
+        description="How many cases exist. items may be a shorter working set."
+    )
+
+
+class HandleIn(BaseModel):
+    case_id: str
+    as_of: str = Field(description="YYYY-MM-DD for a day case, or 'standing'.")
+    done: bool
+
+
+class HandleOut(BaseModel):
+    case_id: str
+    as_of: str
+    done: bool
 
 
 class MorningResponse(BaseModel):

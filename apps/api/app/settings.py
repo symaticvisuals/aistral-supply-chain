@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     # The pack is frozen, so "today" cannot come from the clock. Unset means the
     # last day with data; set it to replay a past morning.
     as_of_date: str | None = None
+    # Handled ticks. Separate from the pack, which we must never write to.
+    handled_db_path: str = "data/handled.db"
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -27,6 +29,11 @@ class Settings(BaseSettings):
         so `uv run` from anywhere still finds the pack.
         """
         raw = Path(self.kestrel_db_path).expanduser()
+        return raw if raw.is_absolute() else (API_DIR / raw).resolve()
+
+    @property
+    def handled_path(self) -> Path:
+        raw = Path(self.handled_db_path).expanduser()
         return raw if raw.is_absolute() else (API_DIR / raw).resolve()
 
 
