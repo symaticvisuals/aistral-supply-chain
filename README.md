@@ -5,6 +5,12 @@ ordered, and where cash leaked. Not a BI suite.
 
 Read `DECISIONS.md` first — what we built, what we did not, and why.
 
+![The Kestrel morning screen](docs/screen-morning.png)
+
+All of it on one screen: fill rate in cases and in pieces, yesterday's queue
+grouped by what this morning can still change, where the cash leaked, and the
+stock that will not clear in time. Real numbers, from the pack.
+
 ## 1 · Before you start
 
 | Needs | Version |
