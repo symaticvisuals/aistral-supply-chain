@@ -56,9 +56,6 @@ yarn-error.log*
 tmp/
 temp/
 
-# Tests stay local, not shipped with the assignment
-apps/api/tests/
-
 # Personal agent overrides
 CLAUDE.local.md
 *.local.md

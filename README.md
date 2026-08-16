@@ -98,7 +98,12 @@ scraper and how much of that is reported rather than silently handled.
 ```bash
 pnpm lint
 pnpm typecheck
+cd apps/api && uv run pytest
 ```
+
+The suite runs without the pack: the tests that need it skip and name the path
+they looked for, so a green run before you have the database is honest rather
+than empty. With the pack in place nothing skips.
 
 ## 8 · Layout
 
